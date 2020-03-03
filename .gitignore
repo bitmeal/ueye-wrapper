@@ -1,0 +1,20 @@
+# build artifacts
+build/
+
+# IDE settings
+.vs/
+.vscode/
+
+# library and debug files
+*.pdb
+*.lib
+*.dll
+*.a
+
+# image files
+*.png
+*.jpg
+*.bmp
+
+# misc
+trash/

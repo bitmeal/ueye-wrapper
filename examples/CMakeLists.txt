@@ -37,10 +37,11 @@ ENDIF()
 
 # export example sources to build directory
 file(GLOB EXAMPLE_SOURCES "${CMAKE_CURRENT_LIST_DIR}/*.cpp")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/src")
 foreach(EXAMPLE_SOURCE_FILE ${EXAMPLE_SOURCES})
 	configure_file(${EXAMPLE_SOURCE_FILE} src/ COPYONLY)
 endforeach()
-configure_file("${CMAKE_CURRENT_LIST_DIR}/examples-CMakeLists.txt" src/CMakeLists.txt COPYONLY)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/examples-CMakeLists.txt" src/CMakeLists.txt)
 
 
 # prepare cross plattform install paths

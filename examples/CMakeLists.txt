@@ -41,7 +41,7 @@ file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/src")
 foreach(EXAMPLE_SOURCE_FILE ${EXAMPLE_SOURCES})
 	configure_file(${EXAMPLE_SOURCE_FILE} src/ COPYONLY)
 endforeach()
-configure_file("${CMAKE_CURRENT_LIST_DIR}/examples-CMakeLists.txt" src/CMakeLists.txt)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/examples-CMakeLists.txt" src/CMakeLists.txt COPYONLY)
 
 
 # prepare cross plattform install paths

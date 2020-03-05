@@ -5,13 +5,15 @@
 # Copyright (C) 2020, Arne Wendt
 #
 
+SET(UEYE-SDK-PROJECT_NAME "UEYE-SDK")
+
 IF(CMAKE_INSTALL_PREFIX AND WIN32) #this CMakeLists is included by a parent project and we are on Windows
 	GET_FILENAME_COMPONENT(CMAKE_INSTALL_PREFIX_BASE "${CMAKE_INSTALL_PREFIX}/.." ABSOLUTE)
-	SET(CMAKE_INSTALL_PREFIX_UEYE-SDK "${CMAKE_INSTALL_PREFIX_BASE}/UEYE-SDK" CACHE PATH "Install path prefix, prepended onto install directories for UEYE-SDK CMake files")
+	SET(CMAKE_INSTALL_PREFIX_UEYE-SDK "${CMAKE_INSTALL_PREFIX_BASE}/${UEYE-SDK-PROJECT_NAME}" CACHE PATH "Install path prefix, prepended onto install directories for UEYE-SDK CMake files")
 	
 	IF(CMAKE_INSTALL_PREFIX_CACHED AND NOT (CMAKE_INSTALL_PREFIX_CACHED STREQUAL CMAKE_INSTALL_PREFIX))
 		# if parent project install prefix has been modified, force override on our install prefix
-		SET(CMAKE_INSTALL_PREFIX_UEYE-SDK "${CMAKE_INSTALL_PREFIX_BASE}/UEYE-SDK" CACHE PATH "Install path prefix, prepended onto install directories for UEYE-SDK CMake files" FORCE)
+		SET(CMAKE_INSTALL_PREFIX_UEYE-SDK "${CMAKE_INSTALL_PREFIX_BASE}/${UEYE-SDK-PROJECT_NAME}" CACHE PATH "Install path prefix, prepended onto install directories for UEYE-SDK CMake files" FORCE)
 	ENDIF()
 
 	SET(CMAKE_INSTALL_PREFIX_CACHED ${CMAKE_INSTALL_PREFIX} CACHE INTERNAL "last install prefix from parent project - INTERNAL")
@@ -20,7 +22,7 @@ IF(CMAKE_INSTALL_PREFIX AND WIN32) #this CMakeLists is included by a parent proj
 ENDIF()
 
 cmake_minimum_required(VERSION 3.12.0)
-project(UEYE-SDK VERSION 0.1.0)
+project(${UEYE-SDK-PROJECT_NAME} VERSION 0.1.0)
 
 SET(CMAKE_CXX_STANDARD 11)
 
@@ -38,7 +40,7 @@ IF(WIN32) # is Windows
 	SET(CMAKE_INSTALL_DOCDIR "${CMAKE_INSTALL_PREFIX}")
 ELSE() # is *NIX like
 	include(GNUInstallDirs)
-	SET(CMAKE_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/${CMAKE_PROJECT_NAME}")
+	SET(CMAKE_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
 ENDIF() # end plattform specific code
 
 IF(NOT (WITH_UEYE-SDK-CMAKE AND NOT INSTALL_UEYE-SDK-CMAKE))

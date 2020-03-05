@@ -6,20 +6,54 @@
 #
 
 
-cmake_minimum_required(VERSION 3.0.0)
-project(ueye_wrapper_examples VERSION 0.1.0)
+IF(NOT CMAKE_PROJECT_NAME)
+	cmake_minimum_required(VERSION 3.12.0)
+	project(ueye-wrapper VERSION 0.1.0)
 
-SET(CMAKE_CXX_STANDARD 11)
+	SET(CMAKE_CXX_STANDARD 11)
+ENDIF()
 
-find_package( OpenCV REQUIRED )
-set(OpenCV_STATIC ON)
+
+IF(NOT TARGET ueye-wrapper)
+	find_package( ueye-wrapper REQUIRED )
+ENDIF()
 find_package( argh REQUIRED )
+find_package( OpenCV REQUIRED )
 
-add_executable(ueye_multiple ueye_multiple.cpp )
-target_include_directories( ueye_multiple PRIVATE ${CMAKE_CURRENT_LIST_DIR}  ${OpenCV_INCLUDE_DIRS} )
-target_link_libraries( ueye_multiple ueye_wrapper  ${OpenCV_LIBS} )
 
-add_executable(ueye_single ueye_single.cpp )
-target_include_directories( ueye_single PRIVATE ${CMAKE_CURRENT_LIST_DIR}  ${OpenCV_INCLUDE_DIRS} )
-target_link_libraries( ueye_single ueye_wrapper  ${OpenCV_LIBS} argh )
+add_executable(ueye-multi ueye_multi.cpp )
+target_include_directories( ueye-multi PRIVATE ${CMAKE_CURRENT_LIST_DIR}  ${OpenCV_INCLUDE_DIRS} )
+target_link_libraries( ueye-multi ueye-wrapper  ${OpenCV_LIBS} )
 
+add_executable(ueye-single ueye_single.cpp )
+target_include_directories( ueye-single PRIVATE ${CMAKE_CURRENT_LIST_DIR}  ${OpenCV_INCLUDE_DIRS} )
+target_link_libraries( ueye-single ueye-wrapper  ${OpenCV_LIBS} argh )
+
+IF(WITH_EXAMPLES)
+	SET(INSTALL_EXAMPLES TRUE CACHE BOOL "install ueye-wrapper examples")
+	SET(INSTALL_EXAMPLES_SRC TRUE CACHE BOOL "install ueye-wrapper example sources")
+ENDIF()
+
+
+IF(NOT (WITH_EXAMPLES AND NOT INSTALL_EXAMPLES))
+
+	install(FILES "${CMAKE_CURRENT_LIST_DIR}/../LICENSE" DESTINATION .)
+	install(FILES "${CMAKE_CURRENT_LIST_DIR}/../README.MD" DESTINATION .)
+	
+	install(TARGETS
+			ueye-multi
+			ueye-single
+			RUNTIME DESTINATION examples/bin)
+
+ENDIF()
+
+IF(NOT (WITH_EXAMPLES AND NOT INSTALL_EXAMPLES_SRC))
+	
+	install(FILES "${CMAKE_CURRENT_LIST_DIR}/../LICENSE" DESTINATION .)
+	install(FILES "${CMAKE_CURRENT_LIST_DIR}/../README.MD" DESTINATION .)
+	
+	install(FILES "${CMAKE_CURRENT_LIST_DIR}/examples-CMakeLists.txt" DESTINATION examples/src RENAME CMakeLists.txt)
+	install(DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/" DESTINATION examples/src FILES_MATCHING PATTERN "*.cpp")
+
+
+ENDIF()

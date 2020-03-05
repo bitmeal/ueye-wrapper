@@ -42,22 +42,22 @@ int main(int argc, char** argv)
 
   if(mode == "RGB32F")
   {
-    imgMode == IMAGE_BGR_32_F;
+    imgMode = IMAGE_BGR_32_F;
     std::cout << "color mode IMAGE_BGR_32_F" << std::endl;
   }
   else if(mode == "RGB8")
   {
-    imgMode == IMAGE_BGR_8_INT;
+    imgMode = IMAGE_BGR_8_INT;
     std::cout << "color mode IMAGE_BGR_8_INT" << std::endl;
   }
   else if(mode == "M32F")
   {
-    imgMode == IMAGE_MONO_32_F;
+    imgMode = IMAGE_MONO_32_F;
     std::cout << "color mode IMAGE_MONO_32_F" << std::endl;
   }
   else if(mode == "M8")
   {
-    imgMode == IMAGE_MONO_8_INT;
+    imgMode = IMAGE_MONO_8_INT;
     std::cout << "color mode IMAGE_MONO_8_INT" << std::endl;
   }
   else

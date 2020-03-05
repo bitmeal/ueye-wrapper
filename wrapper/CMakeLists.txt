@@ -6,18 +6,40 @@
 #
 
 
-cmake_minimum_required(VERSION 3.0.0)
-project(lib_ueye_wrapper VERSION 0.1.0)
+cmake_minimum_required(VERSION 3.12.0)
+project(ueye-wrapper VERSION 0.1.0)
 
 SET(CMAKE_CXX_STANDARD 11)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
-find_package(UEye REQUIRED )
-FIND_PACKAGE( Threads REQUIRED )
+
+find_package( UEYE-SDK REQUIRED )
+find_package( Threads REQUIRED )
 find_package( OpenCV REQUIRED )
 
-set(OpenCV_STATIC ON)
 
-add_library( ueye_wrapper src/ueye_wrapper.cpp )
-target_include_directories( ueye_wrapper PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include" ${OpenCV_INCLUDE_DIRS} )
-target_link_libraries( ueye_wrapper uEye ${OpenCV_LIBS} Threads::Threads )
+add_library( ueye-wrapper src/ueye_wrapper.cpp )
+target_include_directories( ueye-wrapper PUBLIC	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include> )
+target_include_directories( ueye-wrapper PUBLIC	$<BUILD_INTERFACE:${OpenCV_INCLUDE_DIRS}> )
+target_link_libraries( ueye-wrapper ueye-sdk opencv_core Threads::Threads )
+
+
+IF(WITH_WRAPPER)
+	SET(INSTALL_WRAPPER TRUE CACHE BOOL "install uEye C++ wrapper")
+ENDIF()
+
+IF(NOT (WITH_WRAPPER AND NOT INSTALL_WRAPPER))
+
+	install(TARGETS ueye-wrapper
+			EXPORT ueye-wrapperTargets
+			ARCHIVE DESTINATION lib
+			LIBRARY DESTINATION lib
+			INCLUDES DESTINATION include
+			)
+	install(FILES "${CMAKE_CURRENT_LIST_DIR}/include/ueye_wrapper.h" DESTINATION include)
+	install(FILES "${CMAKE_CURRENT_LIST_DIR}/include/ip_helpers.h" DESTINATION include)
+	install(FILES "${CMAKE_CURRENT_LIST_DIR}/../LICENSE" DESTINATION .)
+	install(FILES "${CMAKE_CURRENT_LIST_DIR}/../README.MD" DESTINATION .)
+	install(FILES "${CMAKE_CURRENT_LIST_DIR}/ueye-wrapper-config.cmake" DESTINATION CMake)
+	install(EXPORT ueye-wrapperTargets DESTINATION CMake)
+
+ENDIF()

@@ -5,6 +5,7 @@ build*/
 # IDE settings
 .vs/
 .vscode/
+CMakeSettings.json
 
 # library and debug files
 *.pdb

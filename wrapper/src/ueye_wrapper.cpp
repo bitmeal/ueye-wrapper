@@ -409,7 +409,7 @@ void uEyeWrapper::_showProgress(int ms, bool* term_flag, bool* fail_flag)
         std::cout << "\r";
         double progress = (double)elapsed() / (double)ms;
         std::cout << "[";
-        int pos = barWidth * progress;
+        int pos = (int)(barWidth * progress);
         for (int i = 0; i < barWidth; ++i) {
             if (i < pos) std::cout << "=";
             else if (i == pos) std::cout << ">";
@@ -735,9 +735,9 @@ uEyeWrapper::uEyeHandle::uEyeHandle() : handle(0) {}
 
 uEyeWrapper::uEyeHandle::~uEyeHandle() {_cleanup();}
 
-int uEyeWrapper::uEyeHandle::resizeBuffer(size_t size) { return resizeBuffer(size, true); }
-int uEyeWrapper::uEyeHandle::resizeBufferNOTHROW(size_t size) { return resizeBuffer(size, false); }
-int uEyeWrapper::uEyeHandle::resizeBuffer(size_t size, bool may_throw)
+size_t uEyeWrapper::uEyeHandle::resizeBuffer(size_t size) { return resizeBuffer(size, true); }
+size_t uEyeWrapper::uEyeHandle::resizeBufferNOTHROW(size_t size) { return resizeBuffer(size, false); }
+size_t uEyeWrapper::uEyeHandle::resizeBuffer(size_t size, bool may_throw)
 {
     auto freeMem = [this](int memID, char* memPtr) -> bool
     {
@@ -829,14 +829,12 @@ void uEyeWrapper::uEyeHandle::getImage(cv::Mat& out)
 {
     // we have to copy our data anyways, as memory layout of ueye driver is incompatible with opencv representation
     // we try to get the latest active buffer, lock it, read our data and unlock it again
-    char* pChImgMem;
-    void* pImgMem;
+    char* pImgMem;
     int nret;
 
     // get last active buffer
     // nret = is_GetImageMem(handle, &pImgMem);
-    nret = is_GetActSeqBuf(handle, NULL, NULL, &pChImgMem);
-    pImgMem = pChImgMem;
+    nret = is_GetActSeqBuf(handle, NULL, NULL, &pImgMem);
     if (nret != IS_SUCCESS)
     {
         throw std::runtime_error("getting image memory on camera with cameraID " + std::to_string(camera.camId) + " failed; is_GetImageMem() returned with code " + std::to_string(nret));
@@ -887,10 +885,29 @@ void uEyeWrapper::uEyeHandle::getImage(cv::Mat& out)
                     #endif
                     break;
                 case 12:
+                    /*
                     img = cv::Mat(height, width, CV_16UC4, pImgMem);
                     cv::Mat imd;// = cv::Mat(height, width, CV_32FC4);
                     img.convertTo(imd, CV_32FC4, 1./16.); // 1/6 == 2^4 : align bit order by division. scaling from type conversion seems to be handled automatically
                     cv::cvtColor(imd, out, cv::COLOR_RGBA2RGB);
+                    */
+                    
+                    // if out is not already matrix of right size and has allocated memory, allocate memory
+                    if (!(out.rows == height &&
+                        out.cols == width &&
+                        out.type() == CV_32FC3 &&
+                        out.isContinuous() &&
+                        out.ptr() != NULL)
+                    )
+                        out.create(height, width, CV_32FC3);
+
+                    float* outRawPtr = (float*) out.ptr();
+                    uint16_t* imgU16Ptr = static_cast<uint16_t*>( (void*) pImgMem);
+                    for(size_t px = 0; px < (size_t)width* (size_t)height; ++px)
+                    {
+                        *(outRawPtr + 3 * px + 0) = ((float)((*(imgU16Ptr + 4 * px + 0)) >> 4)) / (float)256.;
+                    }
+
                     #ifdef DEBUG_MSGS
                         std::cout << "captured BGRA 12" << std::endl;
                     #endif

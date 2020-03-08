@@ -80,7 +80,6 @@ inline uint32_t ip_bytes_to_u32_little_endian(ipBytes bytes)
 inline ipBytes ip_string_to_bytes(std::string address)
 {
     ipBytes bytes;
-    size_t posDelim;
     std::string substrRemain = address;
 
     bytes.by1 = std::stoi(substrRemain.substr(0, substrRemain.find('.')));

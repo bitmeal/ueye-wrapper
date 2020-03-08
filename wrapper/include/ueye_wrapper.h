@@ -120,7 +120,7 @@ class uEyeWrapper
         void trigger();
         errorStats getErrors();
         void resetErrorCounters();
-        int resizeBuffer(size_t);
+        size_t resizeBuffer(size_t);
 
         private:
         IMAGE_OPTIONS colorMode;
@@ -143,8 +143,8 @@ class uEyeWrapper
         double FPS;
         bool freerun;
         
-        int resizeBuffer(size_t, bool);
-        int resizeBufferNOTHROW(size_t);
+        size_t resizeBuffer(size_t, bool);
+        size_t resizeBufferNOTHROW(size_t);
         void _cleanup();
         
         friend uEyeWrapper;

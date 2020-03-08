@@ -433,7 +433,7 @@ void uEyeWrapper::_showProgress(int ms, bool* term_flag, bool* fail_flag)
 
 void uEyeWrapper::openCamera(uEyeHandle& camHandle, uEyeCam& cam, IMAGE_OPTIONS imgOpts, CAMERA_OPTIONS camOpts)
 {
-    if (camHandle.handle != 0 || camHandle.pMem[0] != NULL)
+    if (camHandle.handle != 0 || camHandle.buffers.size() != 0)
         throw std::logic_error("camera handle already in use!");
 
     HIDS hCam = cam.camId;
@@ -590,7 +590,9 @@ void uEyeWrapper::openCamera(uEyeHandle& camHandle, uEyeCam& cam, IMAGE_OPTIONS 
         throw std::runtime_error("setting color mode for camera with cameraID " + std::to_string(cam.camId) + " failed; is_SetColorMode() returned with code " + std::to_string(nret));
     }
 
+    camHandle.resizeBuffer(IMAGE_BUFFER_SIZE);
 
+    /*
     //allocate and activate image memory
 	for (int i = 0; i < IMAGE_BUFFER_SIZE; i++)
     {
@@ -628,6 +630,7 @@ void uEyeWrapper::openCamera(uEyeHandle& camHandle, uEyeCam& cam, IMAGE_OPTIONS 
     #ifdef DEBUG_MSGS
     	std::cout << "buffer ready" << std::endl;
     #endif
+    */
 
     // display mode: "display in RAM"
     nret = is_SetDisplayMode(camHandle.handle, IS_SET_DM_DIB);
@@ -728,19 +731,112 @@ void uEyeWrapper::showErrorReport()
 
 uEyeWrapper::~uEyeWrapper() {}
 
-uEyeWrapper::uEyeHandle::uEyeHandle() : handle(0), pMem() {}
+uEyeWrapper::uEyeHandle::uEyeHandle() : handle(0) {}
 
 uEyeWrapper::uEyeHandle::~uEyeHandle() {_cleanup();}
+
+int uEyeWrapper::uEyeHandle::resizeBuffer(size_t size) { return resizeBuffer(size, true); }
+int uEyeWrapper::uEyeHandle::resizeBufferNOTHROW(size_t size) { return resizeBuffer(size, false); }
+int uEyeWrapper::uEyeHandle::resizeBuffer(size_t size, bool may_throw)
+{
+    auto freeMem = [this](int memID, char* memPtr) -> bool
+    {
+        int freeMemTrys = 0;
+        while (
+            is_FreeImageMem(handle, memPtr, memID) != IS_SUCCESS
+            && freeMemTrys < FREE_MEM_TRYS) ++freeMemTrys;
+
+        if (freeMemTrys == FREE_MEM_TRYS)
+            return false;
+
+        return true;
+    };
+
+    auto activateMem = [this](int memID, char* memPtr) -> bool
+    {
+        int activateMemTrys = 0;
+        while (
+            is_AddToSequence(handle, memPtr, memID) != IS_SUCCESS
+            && activateMemTrys < ACTIVATE_MEM_TRYS)
+            ++activateMemTrys;
+
+        if (activateMemTrys == ACTIVATE_MEM_TRYS)
+            return false;
+
+        return true;
+    };
+
+    auto allocMem = [this](int& memID, char*& memPtr) -> bool
+    {
+        int allocMemTrys = 0;
+        while (
+            is_AllocImageMem(handle,
+                width,
+                height,
+                (bits_per_chanel + offset_per_chanel) * chanels + offset_per_px,
+                &memPtr,
+                &memID) != IS_SUCCESS
+            && allocMemTrys < ALLOC_MEM_TRYS
+            )
+            ++allocMemTrys;
+
+        // tried too many times - continue
+        if (allocMemTrys == ALLOC_MEM_TRYS)
+            return false;
+
+        return true;
+    };
+
+    if (size > buffers.size()) // expand buffer
+    {
+        //allocate image memory and store ID and address in buffer map
+        for (size_t i = 0; i < (size - buffers.size()); i++)
+        {
+            int memID = 0;
+            char* memPtr = NULL;
+
+            if ( !allocMem(memID, memPtr))
+                continue;
+
+            if( !activateMem(memID, memPtr) )
+                if ( !freeMem(memID, memPtr)  && may_throw)
+                    throw std::runtime_error("allocating memory for camera with cameraID " + std::to_string(camera.camId) + " failed; image memory could not be activated and trying to free the unactivated memory failed " + std::to_string(FREE_MEM_TRYS) + " times");
+
+            // add buffer to map, with its ID as key
+            buffers[memID] = memPtr;
+        }
+
+    }
+    else if (size < buffers.size()) // shrink buffer
+    {
+        // free memory and remove entry form map, while iterating over map
+        // associative container iterators are invalidated for the removed element only!
+        for (auto buffIt = buffers.rbegin(); buffIt != buffers.rend(); ++buffIt)
+        {
+            // freeMem() tries multiple times by itself; if successful, remove entry from map, if not, try next
+            if (freeMem(buffIt->first, buffIt->second))
+                buffers.erase(buffIt->first);
+
+            if (buffers.size() == size)
+                break;
+        }
+    }
+    
+    return buffers.size();
+}
 
 void uEyeWrapper::uEyeHandle::getImage(cv::Mat& out)
 {
     // we have to copy our data anyways, as memory layout of ueye driver is incompatible with opencv representation
     // we try to get the latest active buffer, lock it, read our data and unlock it again
+    char* pChImgMem;
     void* pImgMem;
     int nret;
 
     // get last active buffer
-	nret = is_GetImageMem(handle, &pImgMem);
+    // nret = is_GetImageMem(handle, &pImgMem);
+    nret = is_GetActSeqBuf(handle, NULL, NULL, &pChImgMem);
+    pImgMem = pChImgMem;
     if (nret != IS_SUCCESS)
     {
         throw std::runtime_error("getting image memory on camera with cameraID " + std::to_string(camera.camId) + " failed; is_GetImageMem() returned with code " + std::to_string(nret));
@@ -1003,29 +1099,13 @@ void uEyeWrapper::uEyeHandle::resetErrorCounters()
 
 void uEyeWrapper::uEyeHandle::_cleanup()
 {
-    int trys = 0;
-    /* //exiting camera should deallocate memory automatically
-    if(pMem[0] != NULL)
-    {
-        #ifdef DEBUG_MSGS
-            std::cout << "freeing memory..." << std::endl;
-        #endif
-
-        int trys = 0;
-        while (is_ClearSequence(handle) != IS_SUCCESS && trys < FREE_MEM_TRYS) trys++;
-
-        for (int i = 0; i < IMAGE_BUFFER_SIZE; i++) {
-            trys = 0;
-            while (is_FreeImageMem(handle, *(pMem + i), *(memID + i)) != IS_SUCCESS && trys < FREE_MEM_TRYS) trys++;
-        }
-    }
-    */
+    resizeBufferNOTHROW(0);
     if (handle != 0)
     {
         #ifdef DEBUG_MSGS
             std::cout << "closing camera..." << std::endl;
         #endif
-        trys = 0;
+        int trys = 0;
         while (is_ExitCamera(handle) != IS_SUCCESS && trys < FREE_MEM_TRYS) trys++;
     }
 }

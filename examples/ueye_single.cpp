@@ -90,6 +90,8 @@ int main(int argc, char** argv)
   uEyeWrapper::openCamera(handle, *camera, IMAGE_BGR_32_F);
   handle.setFPS(fps);
 
+  handle.resizeBuffer(5);
+
   handle.resetErrorCounters();
   uEyeWrapper::uEyeHandle::errorStats errorStats = handle.getErrors();
 

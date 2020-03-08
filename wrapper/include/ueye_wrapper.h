@@ -20,6 +20,7 @@
 #include <tuple>
 #include <vector>
 #include <string>
+#include <map>
 
 #include <opencv2/opencv.hpp>
 
@@ -46,6 +47,8 @@
 #define CAMERA_STARTER_FIRMWARE_AUTO_UPLOAD_RETRYS 3
 
 #define IMAGE_BUFFER_SIZE 3
+#define ALLOC_MEM_TRYS 10
+#define ACTIVATE_MEM_TRYS 10
 #define FREE_MEM_TRYS 500
 #define UNLOCK_MEM_TRYS 10
 #define LOCK_MEM_TRYS 10
@@ -117,7 +120,7 @@ class uEyeWrapper
         void trigger();
         errorStats getErrors();
         void resetErrorCounters();
-
+        int resizeBuffer(size_t);
 
         private:
         IMAGE_OPTIONS colorMode;
@@ -129,8 +132,10 @@ class uEyeWrapper
         int chanels;
         int offset_per_px;
         int offset_per_chanel;
-        int memID[IMAGE_BUFFER_SIZE];
-	    char* pMem[IMAGE_BUFFER_SIZE];
+        //int memID[IMAGE_BUFFER_SIZE];
+	    //char* pMem[IMAGE_BUFFER_SIZE];
+        typedef std::map<int, char*> bufferMap;
+        bufferMap buffers;
     	//void* pMemVoid;
 	    //void* pPrevMemVoid;
         int maxPxlClk;
@@ -138,6 +143,8 @@ class uEyeWrapper
         double FPS;
         bool freerun;
         
+        int resizeBuffer(size_t, bool);
+        int resizeBufferNOTHROW(size_t);
         void _cleanup();
         
         friend uEyeWrapper;

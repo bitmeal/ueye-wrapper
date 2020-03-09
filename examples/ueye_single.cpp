@@ -10,6 +10,7 @@
 #include <iostream>
 #include <exception>
 #include <thread>
+#include <chrono>
 
 #include <argh.h>
 #include <ueye_wrapper.h>
@@ -22,7 +23,7 @@
 int main(int argc, char** argv)
 {
   auto cmdl = argh::parser(argc, argv, argh::parser::SINGLE_DASH_IS_MULTIFLAG);
-  cmdl.add_params({"--ID", "-r", "-f", "-p", "-M"});
+  cmdl.add_params({"--ID", "-r", "-f", "-p", "-M", "-w", "-n"});
 
 
   int camID;
@@ -75,6 +76,15 @@ int main(int argc, char** argv)
   cmdl({"-p"}, DEFAULT_PAUSE) >> pause;
   std::cout << "\"inter grab\" pause " << pause << "ms" << std::endl;
 
+  bool writeImg = cmdl["-w"];
+  auto now = std::chrono::system_clock::now();
+  std::string imgPrefix = "img_" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count()) + "-";
+
+  size_t maxImg;
+  cmdl({ "-n" }, 0) >> maxImg;
+  std::cout << "max number of images " << maxImg << std::endl;
+
+
 
   uEyeWrapper::cameraList camList = uEyeWrapper::getCameraList(CAMERA_LIST_WITH_CONNECTION_INFO);
 
@@ -100,6 +110,7 @@ int main(int argc, char** argv)
 
   while(true)
   {
+    static size_t imgCounter = 0;
     try
     {
       handle.getImage(img);
@@ -112,6 +123,9 @@ int main(int argc, char** argv)
         errorStats = handle.getErrors();
       }
 
+      if (writeImg)
+          cv::imwrite(imgPrefix + std::to_string(imgCounter), img);
+
       std::this_thread::sleep_for(std::chrono::milliseconds(pause));
     }
     catch (const std::exception& e)
@@ -119,6 +133,11 @@ int main(int argc, char** argv)
       std::cout << e.what() << std::endl;
       return EXIT_FAILURE;
     }
+
+    ++imgCounter;
+    if (maxImg != 0 && imgCounter >= maxImg)
+        break;
+
   }
 
   return EXIT_SUCCESS;

@@ -52,6 +52,7 @@
 #define FREE_MEM_TRYS 500
 #define UNLOCK_MEM_TRYS 10
 #define LOCK_MEM_TRYS 10
+#define RETRY_PAUSE_MS 2
 
 #define CLOCK_TUNING_MSEC 4000
 

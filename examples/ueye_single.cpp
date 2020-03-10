@@ -85,10 +85,18 @@ int main(int argc, char** argv)
   std::cout << "max number of images " << maxImg << std::endl;
 
 
+  
+  
+  uEyeWrapper::cameraList camList;
+  uEyeWrapper::cameraList::iterator camera;
+  uEyeWrapper::uEyeHandle handle;
+  uEyeWrapper::uEyeHandle::errorStats errorStats;
 
-  uEyeWrapper::cameraList camList = uEyeWrapper::getCameraList(CAMERA_LIST_WITH_CONNECTION_INFO);
+  try
+  {
+  camList = uEyeWrapper::getCameraList(CAMERA_LIST_WITH_CONNECTION_INFO);
 
-  auto camera = std::find_if(camList.begin(), camList.end(), [camID](uEyeWrapper::uEyeCam camera){return camera.camId == camID;});
+  camera = std::find_if(camList.begin(), camList.end(), [camID](uEyeWrapper::uEyeCam camera){return camera.camId == camID;});
 
   if(camera == camList.end())
   {
@@ -96,14 +104,20 @@ int main(int argc, char** argv)
     return EXIT_FAILURE;
   }
 
-  uEyeWrapper::uEyeHandle handle;
   uEyeWrapper::openCamera(handle, *camera, IMAGE_BGR_32_F);
   handle.setFPS(fps);
 
-  handle.resizeBuffer(5);
+  handle.resizeBuffer(10);
 
   handle.resetErrorCounters();
-  uEyeWrapper::uEyeHandle::errorStats errorStats = handle.getErrors();
+  errorStats = handle.getErrors();
+  }
+  catch (const std::exception& e)
+  {
+    std::cout << e.what() << std::endl;
+    std::cout << "Exiting, init failed!" << std::endl;
+    return EXIT_FAILURE;
+  }
 
 
   cv::Mat img;
@@ -113,6 +127,8 @@ int main(int argc, char** argv)
     static size_t imgCounter = 0;
     try
     {
+      std::this_thread::sleep_for(std::chrono::milliseconds(pause));
+
       handle.getImage(img);
 
       if(errorStats != handle.getErrors()) //new errors
@@ -124,14 +140,13 @@ int main(int argc, char** argv)
       }
 
       if (writeImg)
-          cv::imwrite(imgPrefix + std::to_string(imgCounter), img);
+          cv::imwrite(imgPrefix + std::to_string(imgCounter) + ".png", img);
 
-      std::this_thread::sleep_for(std::chrono::milliseconds(pause));
     }
     catch (const std::exception& e)
     {
       std::cout << e.what() << std::endl;
-      return EXIT_FAILURE;
+      //return EXIT_FAILURE;
     }
 
     ++imgCounter;

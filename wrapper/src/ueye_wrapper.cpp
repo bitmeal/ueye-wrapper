@@ -744,7 +744,11 @@ size_t uEyeWrapper::uEyeHandle::resizeBuffer(size_t size, bool may_throw)
         int freeMemTrys = 0;
         while (
             is_FreeImageMem(handle, memPtr, memID) != IS_SUCCESS
-            && freeMemTrys < FREE_MEM_TRYS) ++freeMemTrys;
+            && freeMemTrys < FREE_MEM_TRYS)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_PAUSE_MS));
+                ++freeMemTrys;
+            }
 
         if (freeMemTrys == FREE_MEM_TRYS)
             return false;
@@ -758,7 +762,10 @@ size_t uEyeWrapper::uEyeHandle::resizeBuffer(size_t size, bool may_throw)
         while (
             is_AddToSequence(handle, memPtr, memID) != IS_SUCCESS
             && activateMemTrys < ACTIVATE_MEM_TRYS)
-            ++activateMemTrys;
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_PAUSE_MS));
+                ++activateMemTrys;
+            }
 
         if (activateMemTrys == ACTIVATE_MEM_TRYS)
             return false;
@@ -778,7 +785,10 @@ size_t uEyeWrapper::uEyeHandle::resizeBuffer(size_t size, bool may_throw)
                 &memID) != IS_SUCCESS
             && allocMemTrys < ALLOC_MEM_TRYS
             )
-            ++allocMemTrys;
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_PAUSE_MS));
+                ++allocMemTrys;
+            }
 
         // tried too many times - continue
         if (allocMemTrys == ALLOC_MEM_TRYS)
@@ -845,6 +855,7 @@ void uEyeWrapper::uEyeHandle::getImage(cv::Mat& out)
     {
 	    nret = is_LockSeqBuf(handle, IS_IGNORE_PARAMETER, (char*)pImgMem);
         if (nret == IS_SUCCESS) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_PAUSE_MS));
     }
     if (nret != IS_SUCCESS)
     {
@@ -905,7 +916,9 @@ void uEyeWrapper::uEyeHandle::getImage(cv::Mat& out)
                     uint16_t* imgU16Ptr = static_cast<uint16_t*>( (void*) pImgMem);
                     for(size_t px = 0; px < (size_t)width* (size_t)height; ++px)
                     {
-                        *(outRawPtr + 3 * px + 0) = ((float)((*(imgU16Ptr + 4 * px + 0)) >> 4)) / (float)256.;
+                        *(outRawPtr + 3 * px + 0) = ((float)((*(imgU16Ptr + 4 * px + 0)) >> 4 ));// / (float)256.;
+                        *(outRawPtr + 3 * px + 1) = ((float)((*(imgU16Ptr + 4 * px + 1)) >> 4 ));// / (float)256.;
+                        *(outRawPtr + 3 * px + 2) = ((float)((*(imgU16Ptr + 4 * px + 2)) >> 4 ));// / (float)256.;
                     }
 
                     #ifdef DEBUG_MSGS
@@ -923,6 +936,7 @@ void uEyeWrapper::uEyeHandle::getImage(cv::Mat& out)
     {
 	    nret = is_UnlockSeqBuf(handle, IS_IGNORE_PARAMETER, (char*)pImgMem);
         if (nret == IS_SUCCESS) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_PAUSE_MS));
     }
     if (nret != IS_SUCCESS)
     {

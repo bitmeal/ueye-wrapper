@@ -21,7 +21,7 @@
 
 
 
-IF(NOT TARGET uEye)
+IF(NOT TARGET ueye-sdk)
 IF(NOT UEYE-SDK_FOUND)
 
 	IF(WIN32) # is Windows

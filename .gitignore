@@ -1,6 +1,6 @@
 # build artifacts
-build/
 build*/
+out*/
 
 # IDE settings
 .vs/

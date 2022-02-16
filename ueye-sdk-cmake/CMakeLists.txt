@@ -27,7 +27,7 @@ project(${UEYE-SDK-PROJECT_NAME} VERSION 0.1.0)
 SET(CMAKE_CXX_STANDARD 11)
 
 IF(WITH_UEYE-SDK-CMAKE)
-	SET(INSTALL_UEYE-SDK-CMAKE TRUE CACHE BOOL "install CMake files to find the iDS uEye SDK with CMakes find_package(UEye)")
+	SET(INSTALL_UEYE-SDK-CMAKE TRUE CACHE BOOL "install CMake files to find the iDS uEye SDK with CMakes find_package(UEYE-SDK)")
 ENDIF()
 
 

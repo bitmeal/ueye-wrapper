@@ -9,10 +9,10 @@
 cmake_minimum_required(VERSION 3.12.0)
 project(ueye-wrapper VERSION 0.1.0)
 
-SET(CMAKE_CXX_STANDARD 11)
+SET(CMAKE_CXX_STANDARD 17)
 
 
-find_package( UEYE-SDK REQUIRED )
+find_package( UEYE-SDK 4.95 REQUIRED )
 find_package( Threads REQUIRED )
 find_package( OpenCV REQUIRED )
 

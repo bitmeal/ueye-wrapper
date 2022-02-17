@@ -9,7 +9,7 @@
 cmake_minimum_required(VERSION 3.12.0)
 project(ueye-wrapper VERSION 0.1.0)
 
-SET(CMAKE_CXX_STANDARD 11)
+SET(CMAKE_CXX_STANDARD 17)
 
 SET(WITH_UEYE-SDK-CMAKE TRUE CACHE BOOL "include and allow install of CMake files to find the iDS uEye SDK with CMakes find_package(UEye)")
 if(WITH_UEYE-SDK-CMAKE)

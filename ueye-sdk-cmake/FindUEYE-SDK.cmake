@@ -17,7 +17,7 @@
 # sets:
 #               UEYE-SDK_INCLUDE_DIRS   - the directory containing uEye.h/ueye.h
 #               UEYE-SDK_LIBRARIES              - uEye SDK libraries
-#               UEYE-SDK_VERSION                - uEye SDK version; patch and fix missing on Linux
+#               UEYE-SDK_VERSION                - uEye SDK version
 #
 
 
@@ -110,9 +110,10 @@ IF(NOT UEYE-SDK_FOUND)
                         FILE(STRINGS "${UEYE-SDK_VERSION_HEADER}" UEYE-SDK_VERSION_DEFINE REGEX "^#define PRODUCT_VERSION *\t*[0-9.]+$")
                         STRING(REGEX MATCH "[0-9.]+" UEYE-SDK_VERSION "${UEYE-SDK_VERSION_DEFINE}")
                 ELSE() # is *NIX like
-                        FILE(GLOB UEYE-SDK_LIBRARY_VERSIONED "${UEYE-SDK_LIBRARIES}.[0-9].*")
-                        STRING(REPLACE "${UEYE-SDK_LIBRARIES}." "" UEYE-SDK_VERSION "${UEYE-SDK_LIBRARY_VERSIONED}")
-                ENDIF() # end plattform specific version detection mechanism
+					FILE(GLOB UEYE-SDK_LIBRARY_VERSIONED "${UEYE-SDK_LIBRARIES}.[0-9].*")
+					STRING(REPLACE "${UEYE-SDK_LIBRARIES}." "" UEYE-SDK_VERSION_COARSE "${UEYE-SDK_LIBRARY_VERSIONED}")
+					FILE(STRINGS ${UEYE-SDK_LIBRARIES} UEYE-SDK_VERSION REGEX "^${UEYE-SDK_VERSION_COARSE}\\.[0-9]+\\.[0-9]+$")
+				ENDIF() # end plattform specific version detection mechanism
 
                 # handled by FIND_PACKAGE_HANDLE_STANDARD_ARGS
                 # # FOUND EVERYTHING WE NEED

@@ -30,29 +30,34 @@ IF(FETCH_DEPENDENCIES)
 	vcpkg_add_package(fmt)
 	vcpkg_add_package(plog)
 	vcpkg_add_package(selene[opencv])
+	# vcpkg_add_package(selene)
 	vcpkg_add_package(indicators)
+	vcpkg_add_package(bshoshany-thread-pool)
 ENDIF()
 
 # find/setup dependencies
-find_package( uEye-SDK 4.95 REQUIRED )
+find_package( uEye-SDK 4.94 REQUIRED )
 find_package( Threads REQUIRED )
 find_package( indicators REQUIRED )
 find_path(PLOG_INCLUDE_DIRS "plog/Init.h" REQUIRED)
 find_package( fmt REQUIRED )
 find_package( selene REQUIRED )
-
+find_path(BSHOSHANY_THREAD_POOL_INCLUDE_DIRS "thread_pool.hpp")
 
 
 # configure library
-add_library( uEye-wrapper src/ueye_wrapper.cpp src/ueye_handle.cpp )
+add_library( uEye-wrapper src/ueye_wrapper.cpp src/ueye_handle.cpp src/ueye_capture_handle.cpp )
 
 target_include_directories( uEye-wrapper PUBLIC	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include> )
-target_include_directories( uEye-wrapper PUBLIC	$<BUILD_INTERFACE:${OpenCV_INCLUDE_DIRS}> )
 
 target_link_libraries( uEye-wrapper uEye-SDK Threads::Threads fmt::fmt indicators::indicators selene::selene )
 target_include_directories(uEye-wrapper PRIVATE ${PLOG_INCLUDE_DIRS})
-
-target_compile_definitions(uEye-wrapper PRIVATE NOMINMAX)
+target_include_directories(uEye-wrapper PRIVATE ${BSHOSHANY_THREAD_POOL_INCLUDE_DIRS})
+# allow indicators to compile NOMINMAX and silence codecvt warnings
+target_compile_definitions(uEye-SDK INTERFACE NOMINMAX)
+target_compile_definitions(indicators::indicators INTERFACE NOMINMAX)
+target_compile_definitions(indicators::indicators INTERFACE _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING)
+set_target_properties(uEye-wrapper PROPERTIES C_STANDARD 17 CXX_STANDARD 17 C_VISIBILITY_PRESET hidden CXX_VISIBILITY_PRESET hidden)
 
 # prepare cross plattform install paths
 IF(WIN32) # is Windows
@@ -67,23 +72,23 @@ ELSE() # is *NIX like
 ENDIF() # end plattform specific code
 
 
-SET(INSTALL_WRAPPER TRUE CACHE BOOL "install uEye C++ wrapper")
-IF(INSTALL_WRAPPER)
-	install(TARGETS uEye-wrapper
-			EXPORT uEye-wrapperTargets
-			ARCHIVE DESTINATION lib
-			LIBRARY DESTINATION lib
-			INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-			)
-	install(FILES "${CMAKE_CURRENT_LIST_DIR}/include/ueye_wrapper.h" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
-	install(FILES "${CMAKE_CURRENT_LIST_DIR}/include/ip_helpers.h" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
-	install(FILES "${CMAKE_CURRENT_LIST_DIR}/../LICENSE" DESTINATION "${CMAKE_INSTALL_DOCDIR}")
-	install(FILES "${CMAKE_CURRENT_LIST_DIR}/../README.MD" DESTINATION "${CMAKE_INSTALL_DOCDIR}")
-	install(FILES "${CMAKE_CURRENT_LIST_DIR}/uEye-wrapper-config.cmake" DESTINATION "${CMAKE_INSTALL_CMAKEDIR}")
-	install(EXPORT uEye-wrapperTargets DESTINATION "${CMAKE_INSTALL_CMAKEDIR}")
-ENDIF()
+# SET(INSTALL_WRAPPER TRUE CACHE BOOL "install uEye C++ wrapper")
+# IF(INSTALL_WRAPPER)
+# 	install(TARGETS uEye-wrapper
+# 			EXPORT uEye-wrapperTargets
+# 			ARCHIVE DESTINATION lib
+# 			LIBRARY DESTINATION lib
+# 			INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+# 			)
+# 	install(FILES "${CMAKE_CURRENT_LIST_DIR}/include/ueye_wrapper.h" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+# 	install(FILES "${CMAKE_CURRENT_LIST_DIR}/include/ip_helpers.h" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+# 	install(FILES "${CMAKE_CURRENT_LIST_DIR}/../LICENSE" DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+# 	install(FILES "${CMAKE_CURRENT_LIST_DIR}/../README.MD" DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+# 	install(FILES "${CMAKE_CURRENT_LIST_DIR}/uEye-wrapper-config.cmake" DESTINATION "${CMAKE_INSTALL_CMAKEDIR}")
+# 	install(EXPORT uEye-wrapperTargets DESTINATION "${CMAKE_INSTALL_CMAKEDIR}")
+# ENDIF()
 
 
 # build dev demo
 add_executable(dev "${CMAKE_CURRENT_LIST_DIR}/dev/dev.cpp")
-target_link_libraries(dev uEye-wrapper)
+target_link_libraries(dev uEye-wrapper selene::selene selene::selene_img_io fmt::fmt)

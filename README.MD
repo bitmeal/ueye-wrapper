@@ -31,7 +31,7 @@ auto camera = std::find_if(camList.begin(), camList.end(),
     });
 
 uEyeWrapper::uEyeHandle handle;
-uEyeWrapper::openCamera(handle, *camera, IMAGE_BGR_32_F);
+uEyeWrapper::openCamera(handle, *camera, IMAGE__32_F);
 ```
 
 When opening a camera you may specify the color-depth and number of channels for the to be captured images. Additionally you may control the upload of matching starter firmwares for your driver, enable automatic *pixel-clock tuning* (Windows only), and enable automatic destruction of driver handles and memory freeing when closing a camera.
@@ -39,8 +39,8 @@ When opening a camera you may specify the color-depth and number of channels for
 Possible color modes are:
 * `IMAGE_MONO_8_INT`
 * `IMAGE_MONO_32_F`
-* `IMAGE_BGR_8_INT`
-* `IMAGE_BGR_32_F`
+* `IMAGE__8_INT`
+* `IMAGE__32_F`
 
 Additional configuration options include:
 * `CAMERA_AUTO_OPTIMAL_CLK_MAX_FPS`: tune pixel-clock and FPS to max throughput *(Windows only)*

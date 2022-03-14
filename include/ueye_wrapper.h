@@ -6,7 +6,6 @@
  * 
  * */
 
-
 #pragma once
 
 #include "wrapper_types.h"
@@ -14,12 +13,12 @@
 
 namespace uEyeWrapper
 {
-    cameraList getCameraList();
+    // TODO: find saner implementation; concurrency impacts handles not the wrapper
+    extern size_t concurrency;
     
-    // async only for now
-    // template<typename T>
-    // uEyeHandle<T> openCamera(const uEyeCameraInfo&, );
+    
+    cameraList getCameraList();
 
-    template<colorMode T>
-    uEyeHandle<T> openCamera(const uEyeCameraInfo, std::function<void(int, std::string)> = nullptr, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> = uploadProgressHandlerBar);
+    template <imageColorMode M, imageBitDepth D>
+    uEyeHandle<M, D> openCamera(const uEyeCameraInfo, std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)> = nullptr, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> = uploadProgressHandlerBar);
 }

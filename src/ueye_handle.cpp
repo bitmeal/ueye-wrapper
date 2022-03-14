@@ -1,11 +1,8 @@
-#pragma once
-
 #include "ueye_handle.h"
+#include "ueye_wrapper.h"
 
 #include <type_traits>
 #include <math.h>
-#include <functional>
-#include <thread>
 using namespace std::chrono_literals;
 
 #include <deque>
@@ -34,11 +31,6 @@ using namespace std::chrono_literals;
 #include <indicators/progress_bar.hpp>
 #include <indicators/terminal_size.hpp>
 
-#define CAMERA_STARTER_FIRMWARE_UPLOAD_RETRY_WAIT 10ms
-#define CAMERA_STARTER_FIRMWARE_UPLOAD_RETRIES 3
-#define CAMERA_CLOSE_RETRY_WAIT 10ms
-#define CAMERA_CLOSE_RETRIES 3
-
 // TODO: after open make logging print camera handle only
 namespace uEyeWrapper
 {
@@ -61,7 +53,7 @@ namespace uEyeWrapper
                 indicators::option::ShowPercentage{true}};
 
             // advance bar in fixed interval
-            auto t_start = std::chrono::high_resolution_clock::now();
+            auto t_start = std::chrono::steady_clock::now();
             for (size_t progress = 0; progress * update_slice < 100; progress++)
             {
                 // update bar width
@@ -99,15 +91,89 @@ namespace uEyeWrapper
     /////////////////////////////////////////////////
     // uEyeHandle impl
 
-    template <colorMode T>
-    uEyeHandle<T>::uEyeHandle(
+    // call api methods, log info, throw on error and perform cleanup
+    // if message string is zero length, the API will be queried for last error string
+    template <imageColorMode M, imageBitDepth D>
+    UEYE_API_CALL_MEMBER_DEF(uEyeHandle<M, D>)
+    {
+        auto _msg = msg;
+        const std::string common_prefix = fmt::format(
+            "[{}@{}] camera {} ({} [#{}])",
+            caller_name,
+            caller_line,
+            camera.deviceId,
+            camera.modelName,
+            camera.serialNo);
+
+        int nret = std::apply(f, f_args);
+        if (nret != IS_SUCCESS)
+        {
+            // query API for error message if user supplied message is empty and return code is IS_NO_SUCCESS
+            if (_msg.length() == 0 && nret == IS_NO_SUCCESS)
+            {
+                PLOG_DEBUG << fmt::format("{}: querying API for error message", common_prefix);
+                auto err_info = _get_last_error_msg();
+                _msg = std::get<1>(err_info);
+            }
+
+            // build common message
+            const std::string common_msg = fmt::format(
+                "{}; {}() returned with code {}",
+                _msg.length() == 0 ? "<empty>" : _msg,
+                f_name,
+                nret);
+
+            // log the error as warning from wrapper; error handling shall be done by user
+            PLOG_WARNING << fmt::format("{}: {}", common_prefix, common_msg);
+
+            // if a cleanup is required and a handler function is provided, execute it
+            if (cleanup_handler)
+            {
+                PLOG_WARNING << fmt::format("{}: calling provided cleanup handler after failed call to {}()", common_prefix, f_name);
+                cleanup_handler();
+            }
+
+            // throw error
+            throw std::runtime_error(common_msg);
+        }
+
+        // log API method name and return code for debugging purposes (nret will allways be IS_SUCCESS(0) here)
+        PLOG_DEBUG << fmt::format("{}: {}() returned with code {}", common_prefix, f_name, nret);
+    }
+
+    template <imageColorMode M, imageBitDepth D>
+    uEyeHandle<M, D>::uEyeHandle(
         uEyeCameraInfo camera,
-        std::function<void(int, std::string)> errorCallback,
-        std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> uploadProgressHandler) : /*FPS(_FPS), freerun_active(_freerun_active),*/ camera(_camera), resolution(_resolution), sensor(_sensor), errorCallback(errorCallback), handle(0)
+        std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)> captureStatusCallback,
+        std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> uploadProgressHandler) : /*FPS(_FPS), freerun_active(_freerun_active),*/
+                                                                                                                  camera(_camera),
+                                                                                                                  resolution(_resolution),
+                                                                                                                  sensor(_sensor),
+                                                                                                                  errorStats(_error_stats),
+                                                                                                                  captureStatusCallback(captureStatusCallback),
+                                                                                                                  handle(0),
+                                                                                                                  _channels((std::underlying_type_t<decltype(M)>)M),
+                                                                                                                  _bit_depth((std::underlying_type_t<decltype(D)>)D),
+                                                                                                                  _uEye_color_mode(M == imageColorMode::MONO ?                                                                     // switch on color channels
+                                                                                                                                       (D == imageBitDepth::i8 ? IS_CM_MONO8 : IS_CM_MONO16)                                       // mono
+                                                                                                                                                             : (D == imageBitDepth::i8 ? IS_CM_RGB8_PACKED : IS_CM_RGB12_UNPACKED) // RGB
+                                                                                                                                   ),
+                                                                                                                  _concurrency(uEyeWrapper::concurrency),
+                                                                                                                  _memory_manager(*this)
     {
         // initialize object
         _camera = camera; // param
         _camera.canOpen = false;
+
+        PLOG_INFO << fmt::format(
+            "camera {}: {} [#{}] to be opened with {} color channels @{}bit (IS_CM_* == {}); allowed conurrency {}",
+            camera.deviceId,
+            camera.modelName,
+            camera.serialNo,
+            _channels,
+            _bit_depth,
+            _uEye_color_mode,
+            _concurrency);
 
         // open camera
         // exceptions will not be caught; _open_camera will cleanup after itself on failure
@@ -118,13 +184,20 @@ namespace uEyeWrapper
         try
         {
             _populate_sensor_info();
-            
+
+            _setup_capture_to_memory();
+
+            _init_events();
+            _SPAWN_capture_status_observer();
+
             _set_AutoControl_default();
             setWhiteBalance(whiteBalance::AUTO);
         }
         catch (...)
         {
             // cleanup
+            _memory_manager.cleanup();
+            _stop_threads();
             _close_camera();
 
             // rethrow
@@ -132,8 +205,15 @@ namespace uEyeWrapper
         }
     };
 
-    template <colorMode T>
-    void uEyeHandle<T>::_open_camera(std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> uploadProgressHandler)
+    template <imageColorMode M, imageBitDepth D>
+    template <captureType C>
+    uEyeCaptureHandle<uEyeHandle<M, D>, C> uEyeHandle<M, D>::getCaptureHandle(typename uEyeCaptureHandle<uEyeHandle<M, D>, C>::imageCallbackT imageCallback)
+    {
+        return uEyeCaptureHandle<uEyeHandle<M, D>, C>(*this, imageCallback);
+    }
+
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::_open_camera(std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> uploadProgressHandler)
     {
         PLOG_INFO << fmt::format(
             "opening camera {}: {} [#{}]",
@@ -278,22 +358,16 @@ namespace uEyeWrapper
 
         // opened successfully; assign handle
         handle = hCam;
+
+        UEYE_API_CALL(is_ResetToDefault, {handle});
     }
 
-    template <colorMode T>
-    void uEyeHandle<T>::_populate_sensor_info()
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::_populate_sensor_info()
     {
         SENSORINFO sensorInfo;
-        if (is_GetSensorInfo(handle, &sensorInfo) != IS_SUCCESS)
-        {
-            PLOG_INFO << fmt::format(
-                "camera {} ({} [#{}]) failed to query sensor information; raising exception",
-                camera.deviceId,
-                camera.modelName,
-                camera.serialNo);
 
-            throw std::runtime_error("failed to query sensor information");
-        }
+        UEYE_API_CALL(is_GetSensorInfo, {handle, &sensorInfo});
 
         _resolution = {sensorInfo.nMaxWidth, sensorInfo.nMaxHeight};
         switch (sensorInfo.nColorMode)
@@ -302,7 +376,7 @@ namespace uEyeWrapper
             _sensor = sensorType::MONO;
             break;
         case IS_COLORMODE_BAYER:
-            _sensor = sensorType::BGR;
+            _sensor = sensorType::RGB;
             break;
         }
 
@@ -316,9 +390,31 @@ namespace uEyeWrapper
             std::get<1>(_resolution));
     }
 
-    template <colorMode T>
-    void uEyeHandle<T>::_set_AutoControl_default()
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::_set_AutoControl_default()
     {
+        // TODO: make configurable
+        // enable HDR; has to be enabled before white balance and auto exposure settings
+        try
+        {
+            INT nHDR;
+            UEYE_API_CALL(is_GetHdrMode, {handle, &nHDR});
+            if (nHDR != IS_HDR_NOT_SUPPORTED)
+            {
+                PLOG_DEBUG << fmt::format(
+                    "camera {} ({} [#{}]) supports HDR: enabling",
+                    camera.deviceId,
+                    camera.modelName,
+                    camera.serialNo);
+
+                INT enable = IS_ENABLE_HDR;
+                UEYE_API_CALL(is_EnableHdr, {handle, enable});
+            }
+        }
+        catch (...)
+        {
+        }
+
         // query default config and apply it
 
         // setup configuration structures
@@ -339,41 +435,26 @@ namespace uEyeWrapper
             camera.modelName,
             camera.serialNo);
 
-        // || operator uses short circuit evaluation: second half will not be evaluated if first does not succeed
-        if (
-            is_AutoParameter(handle, IS_AES_CMD_GET_CONFIGURATION_DEFAULT, pAesConfiguration, nSizeOfParam) != IS_SUCCESS ||
-            is_AutoParameter(handle, IS_AES_CMD_SET_ENABLE, &nEnable, sizeof(nEnable)) != IS_SUCCESS ||
-            is_AutoParameter(handle, IS_AES_CMD_SET_CONFIGURATION, pAesConfiguration, nSizeOfParam) != IS_SUCCESS)
-        {
-            // failed
-            PLOG_INFO << fmt::format(
-                "camera {} ({} [#{}]) enabling auto control with default parameters failed; raising exception",
-                camera.deviceId,
-                camera.modelName,
-                camera.serialNo);
+        UEYE_API_CALL(is_AutoParameter, {handle, IS_AES_CMD_GET_CONFIGURATION_DEFAULT, pAesConfiguration, nSizeOfParam}, [&]()
+                      { delete pBuffer; });
+        UEYE_API_CALL(is_AutoParameter, {handle, IS_AES_CMD_SET_ENABLE, &nEnable, (UINT)sizeof(nEnable)}, [&]()
+                      { delete pBuffer; });
+        UEYE_API_CALL(is_AutoParameter, {handle, IS_AES_CMD_SET_CONFIGURATION, pAesConfiguration, nSizeOfParam}, [&]()
+                      { delete pBuffer; });
 
-            // cleanup
-            delete pBuffer;
-
-            throw std::runtime_error("enabling auto control on camera failed");
-        }
-        else
-        {
-            // success
-            // TODO: print values acquired from camera
-            PLOG_INFO << fmt::format(
-                "camera {} ({} [#{}]) auto control enabled",
-                camera.deviceId,
-                camera.modelName,
-                camera.serialNo);
-        }
+        // TODO: print values acquired from camera
+        PLOG_INFO << fmt::format(
+            "camera {} ({} [#{}]) auto control enabled",
+            camera.deviceId,
+            camera.modelName,
+            camera.serialNo);
 
         // cleanup
         delete pBuffer;
     }
 
-    template <colorMode T>
-    void uEyeHandle<T>::setWhiteBalance(whiteBalance WB)
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::setWhiteBalance(whiteBalance WB)
     {
         if (WB == whiteBalance::AUTO)
         {
@@ -381,18 +462,18 @@ namespace uEyeWrapper
         }
         else
         {
-            _set_WhiteBalance_kelvin(static_cast<std::underlying_type<whiteBalance>::type>(WB));
+            _set_WhiteBalance_kelvin(static_cast<std::underlying_type_t<whiteBalance>>(WB));
         }
     }
 
-    template <colorMode T>
-    void uEyeHandle<T>::setWhiteBalance(int kelvin)
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::setWhiteBalance(int kelvin)
     {
         _set_WhiteBalance_kelvin(kelvin);
     }
 
-    template <colorMode T>
-    unsigned int uEyeHandle<T>::_set_WhiteBalance_colorModel_default()
+    template <imageColorMode M, imageBitDepth D>
+    unsigned int uEyeHandle<M, D>::_set_WhiteBalance_colorModel_default()
     {
         PLOG_DEBUG << fmt::format(
             "camera {} ({} [#{}]) setting white balance color model to default",
@@ -402,19 +483,8 @@ namespace uEyeWrapper
 
         // set default color model
         UINT colorModel;
-        if (
-            is_ColorTemperature(handle, COLOR_TEMPERATURE_CMD_GET_RGB_COLOR_MODEL_DEFAULT, &colorModel, sizeof(colorModel)) != IS_SUCCESS ||
-            is_ColorTemperature(handle, COLOR_TEMPERATURE_CMD_SET_RGB_COLOR_MODEL, &colorModel, sizeof(colorModel)) != IS_SUCCESS)
-        {
-            // failed
-            PLOG_INFO << fmt::format(
-                "camera {} ({} [#{}]) setting default color model for white balance failed; raising exception",
-                camera.deviceId,
-                camera.modelName,
-                camera.serialNo);
-
-            throw std::runtime_error("setting white balance default color model failed");
-        }
+        UEYE_API_CALL(is_ColorTemperature, {handle, COLOR_TEMPERATURE_CMD_GET_RGB_COLOR_MODEL_DEFAULT, &colorModel, (UINT)sizeof(colorModel)});
+        UEYE_API_CALL(is_ColorTemperature, {handle, COLOR_TEMPERATURE_CMD_SET_RGB_COLOR_MODEL, &colorModel, (UINT)sizeof(colorModel)});
 
         PLOG_INFO << fmt::format(
             "camera {} ({} [#{}]) set default white balance color model ({})",
@@ -426,8 +496,8 @@ namespace uEyeWrapper
         return colorModel;
     }
 
-    template <colorMode T>
-    void uEyeHandle<T>::_set_WhiteBalance_kelvin(unsigned int kelvin)
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::_set_WhiteBalance_kelvin(unsigned int kelvin)
     {
         PLOG_DEBUG << fmt::format(
             "camera {} ({} [#{}]) setting white balance; disabling auto white balance",
@@ -488,16 +558,7 @@ namespace uEyeWrapper
             kelvin);
 
         INT kelvin_typed = kelvin;
-        if (is_ColorTemperature(handle, COLOR_TEMPERATURE_CMD_SET_TEMPERATURE, &kelvin_typed, sizeof(kelvin_typed)) != IS_SUCCESS)
-        {
-            PLOG_INFO << fmt::format(
-                "camera {} ({} [#{}]) setting white balance color temperature failed; raising exception",
-                camera.deviceId,
-                camera.modelName,
-                camera.serialNo);
-
-            throw std::runtime_error("setting white balance color temperature failed");
-        }
+        UEYE_API_CALL(is_ColorTemperature, {handle, COLOR_TEMPERATURE_CMD_SET_TEMPERATURE, &kelvin_typed, (UINT)sizeof(kelvin_typed)});
 
         PLOG_INFO << fmt::format(
             "camera {} ({} [#{}]) set white balance color temperature as {}K - OK",
@@ -509,10 +570,10 @@ namespace uEyeWrapper
         // TODO: reread and "verify"/return actual color temperature
     }
 
-    template <colorMode T>
-    void uEyeHandle<T>::_set_WhiteBalance_AUTO(bool enable)
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::_set_WhiteBalance_AUTO(bool enable)
     {
-        UINT nEnable = enable ? IS_AUTOPARAMETER_ENABLE : IS_AUTOPARAMETER_DISABLE;
+        UINT nEnable = enable && M == imageColorMode::RGB ? IS_AUTOPARAMETER_ENABLE : IS_AUTOPARAMETER_DISABLE;
 
         // prepare enabling
         if (enable)
@@ -522,17 +583,7 @@ namespace uEyeWrapper
             // query supported auto white balance types
             UINT nSupportedTypes = 0;
             UINT WBMode = 0;
-
-            if (is_AutoParameter(handle, IS_AWB_CMD_GET_SUPPORTED_TYPES, (void *)&nSupportedTypes, sizeof(nSupportedTypes)) != IS_SUCCESS)
-            {
-                PLOG_INFO << fmt::format(
-                    "camera {} ({} [#{}]) failed querying supported auto white balance modes; raising exception",
-                    camera.deviceId,
-                    camera.modelName,
-                    camera.serialNo);
-
-                throw std::runtime_error("failed querying supported auto white balance modes");
-            }
+            UEYE_API_CALL(is_AutoParameter, {handle, IS_AWB_CMD_GET_SUPPORTED_TYPES, (void *)&nSupportedTypes, (UINT)sizeof(nSupportedTypes)});
 
             // select white balance mode: temperature preceeding grey world
             if (nSupportedTypes & IS_AWB_COLOR_TEMPERATURE)
@@ -565,8 +616,9 @@ namespace uEyeWrapper
             }
 
             // set auto white balance type
+            UEYE_API_CALL(is_AutoParameter, {handle, IS_AWB_CMD_SET_TYPE, (void *)&WBMode, (UINT)sizeof(WBMode)});
 
-            // set auto white balance color model
+            // set auto white balance color model if using IS_AWB_COLOR_TEMPERATURE
             // query (and set) default WB color model
             UINT defaultColorModel = _set_WhiteBalance_colorModel_default();
             INT nSupportedModels = WBMode;
@@ -589,27 +641,15 @@ namespace uEyeWrapper
                 camera.modelName,
                 camera.serialNo,
                 defaultColorModel);
-
-            // set to enable auto WB
-            nEnable = IS_AUTOPARAMETER_ENABLE;
         }
 
         // enable/disable
-        if (is_AutoParameter(handle, IS_AWB_CMD_SET_ENABLE, (void *)&nEnable, sizeof(nEnable)) != IS_SUCCESS)
-        {
-            PLOG_INFO << fmt::format(
-                "camera {} ({} [#{}]) failed to {} auto white balance; raising exception",
-                camera.deviceId,
-                camera.modelName,
-                camera.serialNo,
-                nEnable == IS_AUTOPARAMETER_ENABLE ? "enable" : "disable");
-
-            throw std::runtime_error(fmt::format("failed to {} auto white balance", nEnable == IS_AUTOPARAMETER_ENABLE ? "enable" : "disable"));
-        }
+        UEYE_API_CALL(is_AutoParameter, {handle, IS_AWB_CMD_SET_ENABLE, (void *)&nEnable, (UINT)sizeof(nEnable)});
+        // , fmt::format("failed to {} auto white balance", nEnable == IS_AUTOPARAMETER_ENABLE ? "enable" : "disable"));
     }
 
-    template <colorMode T>
-    double uEyeHandle<T>::setFPS(double FPS)
+    template <imageColorMode M, imageBitDepth D>
+    double uEyeHandle<M, D>::setFPS(double FPS)
     {
         PLOG_INFO << fmt::format(
             "camera {} ({} [#{}]) requested setting FPS to {}",
@@ -624,16 +664,7 @@ namespace uEyeWrapper
         std::vector<UINT> clkList;
 
         // get timing/FPS range
-        if (is_GetFrameTimeRange(handle, &frameTimingMin, &frameTimingMax, &frameTimingIntervall) != IS_SUCCESS)
-        {
-            PLOG_INFO << fmt::format(
-                "camera {} ({} [#{}]) failed to query frame timing (FPS) range; raising exception",
-                camera.deviceId,
-                camera.modelName,
-                camera.serialNo);
-
-            throw std::runtime_error("failed to query frame timing (FPS) range");
-        }
+        UEYE_API_CALL(is_GetFrameTimeRange, {handle, &frameTimingMin, &frameTimingMax, &frameTimingIntervall});
         minFPS = 1 / frameTimingMax;
         maxFPS = 1 / frameTimingMin;
 
@@ -655,16 +686,7 @@ namespace uEyeWrapper
                 camera.serialNo);
 
             // get pixel clock
-            if (is_PixelClock(handle, IS_PIXELCLOCK_CMD_GET, (void *)&clk, sizeof(clk)) != IS_SUCCESS)
-            {
-                PLOG_INFO << fmt::format(
-                    "camera {} ({} [#{}]) failed to query current pixel clock; raising exception",
-                    camera.deviceId,
-                    camera.modelName,
-                    camera.serialNo);
-
-                throw std::runtime_error("failed to query current pixel clock");
-            }
+            UEYE_API_CALL(is_PixelClock, {handle, IS_PIXELCLOCK_CMD_GET, (void *)&clk, (UINT)sizeof(clk)});
 
             PLOG_INFO << fmt::format(
                 "camera {} ({} [#{}]) current pixel clock {}MHz",
@@ -715,16 +737,7 @@ namespace uEyeWrapper
                     numClk);
 
                 clkList = std::vector<UINT>(numClk, 0);
-                if (is_PixelClock(handle, IS_PIXELCLOCK_CMD_GET_LIST, (void *)clkList.data(), numClk * sizeof(UINT)) != IS_SUCCESS)
-                {
-                    PLOG_INFO << fmt::format(
-                        "camera {} ({} [#{}]) failed to query discrete pixel clock values; raising exception",
-                        camera.deviceId,
-                        camera.modelName,
-                        camera.serialNo);
-
-                    throw std::runtime_error("failed to query discrete pixel clock values");
-                }
+                UEYE_API_CALL(is_PixelClock, {handle, IS_PIXELCLOCK_CMD_GET_LIST, (void *)clkList.data(), (UINT)(numClk * sizeof(UINT))});
             }
 
             PLOG_INFO << fmt::format(
@@ -750,29 +763,11 @@ namespace uEyeWrapper
                     camera.serialNo,
                     clkOpts.front());
 
-                if (is_PixelClock(handle, IS_PIXELCLOCK_CMD_SET, (void *)&(clkOpts.front()), sizeof(UINT)) != IS_SUCCESS)
-                {
-                    PLOG_INFO << fmt::format(
-                        "camera {} ({} [#{}]) failed setting pixel clock to {}MHz; raising exception",
-                        camera.deviceId,
-                        camera.modelName,
-                        camera.serialNo,
-                        clkOpts.front());
-
-                    throw std::runtime_error(fmt::format("failed setting pixel clock to {}MHz", clkOpts.front()));
-                }
+                UEYE_API_CALL(is_PixelClock, {handle, IS_PIXELCLOCK_CMD_SET, (void *)&(clkOpts.front()), (UINT)sizeof(UINT)});
+                // , fmt::format("failed setting pixel clock to {}MHz", clkOpts.front()));
 
                 // get FPS range
-                if (is_GetFrameTimeRange(handle, &frameTimingMin, &frameTimingMax, &frameTimingIntervall) != IS_SUCCESS)
-                {
-                    PLOG_INFO << fmt::format(
-                        "camera {} ({} [#{}]) failed to query frame timing (FPS) range; raising exception",
-                        camera.deviceId,
-                        camera.modelName,
-                        camera.serialNo);
-
-                    throw std::runtime_error("failed to query frame timing (FPS) range");
-                }
+                UEYE_API_CALL(is_GetFrameTimeRange, {handle, &frameTimingMin, &frameTimingMax, &frameTimingIntervall});
                 minFPS = 1 / frameTimingMax;
                 maxFPS = 1 / frameTimingMin;
 
@@ -791,16 +786,7 @@ namespace uEyeWrapper
 
         //set PFS after (when necessary) adjusting pixel clock
         double newFPS;
-        if (is_SetFrameRate(handle, FPS, &(newFPS)) != IS_SUCCESS)
-        {
-            PLOG_INFO << fmt::format(
-                "camera {} ({} [#{}]) failed to set FPS; raising exception",
-                camera.deviceId,
-                camera.modelName,
-                camera.serialNo);
-
-            throw std::runtime_error("failed to set FPS");
-        }
+        UEYE_API_CALL(is_SetFrameRate, {handle, FPS, &newFPS});
 
         PLOG_INFO << fmt::format(
             "camera {} ({} [#{}]) requested {} FPS; actual {}",
@@ -813,15 +799,141 @@ namespace uEyeWrapper
         return newFPS;
     }
 
-    template <colorMode T>
-    uEyeHandle<T>::~uEyeHandle()
+    template <imageColorMode M, imageBitDepth D>
+    std::tuple<int, std::string> uEyeHandle<M, D>::_get_last_error_msg() const
     {
-        _close_camera();
-        _cleanup_memory();
+        char *lastErrorBuffer;
+        int lastError;
+
+        if (is_GetError(handle, &lastError, &lastErrorBuffer) == IS_SUCCESS)
+        {
+            return {lastError, std::string(lastErrorBuffer)};
+        }
+        else
+        {
+            return {0, ""};
+        }
     }
 
-    template <colorMode T>
-    void uEyeHandle<T>::_close_camera()
+    template <imageColorMode M, imageBitDepth D>
+    uEyeHandle<M, D>::~uEyeHandle()
+    {
+        _stop_threads();
+        _cleanup_events();
+
+        _memory_manager.cleanup(); // should be destructed and cleanup itself; debugging shows otherwise
+        _close_camera();
+        // _cleanup_memory();
+    }
+
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::_init_events()
+    {
+        // TODO: use stl containers, make INIT_EVENT structure a member, build event list from member by mapping function
+        // init events
+        IS_INIT_EVENT init_events[] = {
+            {IS_SET_EVENT_FRAME, FALSE, FALSE},
+            // start capture status event with signal flag and force initial handler execution
+            {IS_SET_EVENT_CAPTURE_STATUS, FALSE, TRUE},
+            // terminate thread event will not reset and will be available continuously after signaling
+            {IS_SET_EVENT_TERMINATE_HANDLE_THREADS, TRUE, FALSE},
+            {IS_SET_EVENT_TERMINATE_CAPTURE_THREADS, TRUE, FALSE}};
+
+        UEYE_API_CALL(is_Event, {handle, IS_EVENT_CMD_INIT, init_events, (UINT)sizeof(init_events)});
+
+        // enable event messages
+        UINT events[] = {IS_SET_EVENT_FRAME, IS_SET_EVENT_CAPTURE_STATUS, IS_SET_EVENT_TERMINATE_HANDLE_THREADS, IS_SET_EVENT_TERMINATE_CAPTURE_THREADS};
+        is_Event(handle, IS_EVENT_CMD_ENABLE, events, sizeof(events));
+    }
+
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::_cleanup_events()
+    {
+        // TODO: as in _init_events()
+        UINT events[] = {IS_SET_EVENT_FRAME, IS_SET_EVENT_CAPTURE_STATUS, IS_SET_EVENT_TERMINATE_HANDLE_THREADS, IS_SET_EVENT_TERMINATE_CAPTURE_THREADS};
+        is_Event(handle, IS_EVENT_CMD_DISABLE, events, sizeof(events));
+        is_Event(handle, IS_EVENT_CMD_EXIT, events, sizeof(events));
+    }
+
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::_SPAWN_capture_status_observer()
+    {
+        // check if already executing
+        if (_capture_status_observer_executor.joinable())
+        {
+            return;
+        }
+
+        // observer function:
+        auto observer = [&]()
+        {
+            PLOG_DEBUG << fmt::format("camera {} ({} [#{}]) capture status observer started", camera.deviceId, camera.modelName, camera.serialNo);
+            UINT events[] = {IS_SET_EVENT_CAPTURE_STATUS, IS_SET_EVENT_TERMINATE_HANDLE_THREADS};
+            IS_WAIT_EVENTS wait_events = {events, sizeof(events) / sizeof(events[0]), FALSE, INFINITE, 0, 0};
+
+            while (IS_SET_EVENT_TERMINATE_HANDLE_THREADS != wait_events.nSignaled)
+            {
+                INT ret = is_Event(handle, IS_EVENT_CMD_WAIT, &wait_events, sizeof(wait_events));
+                PLOG_DEBUG << fmt::format("camera {} ({} [#{}]) capture status observer received event", camera.deviceId, camera.modelName, camera.serialNo);
+
+                if ((IS_SUCCESS == ret) && (IS_SET_EVENT_CAPTURE_STATUS == wait_events.nSignaled))
+                {
+                    try
+                    {
+                        UEYE_CAPTURE_STATUS_INFO CaptureStatusInfo;
+                        UEYE_API_CALL(is_CaptureStatus, {handle, IS_CAPTURE_STATUS_INFO_CMD_GET, (void *)&CaptureStatusInfo, (UINT)sizeof(CaptureStatusInfo)});
+
+                        _error_stats.update(CaptureStatusInfo, std::chrono::system_clock::now(),
+                                            [&this](captureError err)
+                                            {
+                                                PLOG_WARNING << fmt::format(
+                                                    "camera {} ({} [#{}]) {}({}): {}",
+                                                    camera.deviceId,
+                                                    camera.modelName,
+                                                    camera.serialNo,
+                                                    err.name,
+                                                    err.count(),
+                                                    err.info);
+                                            });
+                    }
+                    catch (const std::exception &e)
+                    {
+                        PLOG_ERROR << e.what();
+                    }
+                }
+            }
+            PLOG_DEBUG << fmt::format("camera {} ({} [#{}]) capture status observer shut down", camera.deviceId, camera.modelName, camera.serialNo);
+        };
+
+        _capture_status_observer_executor = std::thread(observer);
+    }
+
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::_stop_threads()
+    {
+        PLOG_DEBUG << fmt::format("camera {} ({} [#{}]) sending termination signal to background threads", camera.deviceId, camera.modelName, camera.serialNo);
+
+        // send event signal IS_SET_EVENT_TERMINATE_HANDLE_THREADS
+        UINT terminate_event = IS_SET_EVENT_TERMINATE_HANDLE_THREADS;
+        while (is_Event(handle, IS_EVENT_CMD_SET, &terminate_event, sizeof(terminate_event)) != IS_SUCCESS)
+        {
+            PLOG_WARNING << fmt::format(
+                "camera {} ({} [#{}]) failed signaling threads to terminate, retrying...",
+                camera.deviceId,
+                camera.modelName,
+                camera.serialNo);
+            std::this_thread::sleep_for(CAMERA_CLOSE_RETRY_WAIT);
+        }
+
+        // join capture status observer
+        if (_capture_status_observer_executor.joinable())
+        {
+            _capture_status_observer_executor.join();
+        }
+    }
+
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::_close_camera()
     {
         PLOG_INFO << fmt::format("closing connection to camera {}({}) [{:#010x}]", _camera.deviceId, _camera.cameraId, handle);
         if (handle != 0)
@@ -832,12 +944,13 @@ namespace uEyeWrapper
                 if (is_ExitCamera(handle) == IS_SUCCESS)
                     break;
 
+                PLOG_WARNING << fmt::format("failed closing connection to camera {}({}) [{:#010x}] will retry", _camera.deviceId, _camera.cameraId, handle);
                 tries++;
                 std::this_thread::sleep_for(CAMERA_CLOSE_RETRY_WAIT);
             }
             if (tries == CAMERA_CLOSE_RETRIES)
             {
-                PLOG_WARNING << fmt::format("failed closing connection to camera {}({}) [{:#010x}] after {} tries!", _camera.deviceId, _camera.cameraId, handle, tries);
+                PLOG_ERROR << fmt::format("failed closing connection to camera {}({}) [{:#010x}] after {} tries!", _camera.deviceId, _camera.cameraId, handle, tries);
             }
             else
             {
@@ -850,37 +963,249 @@ namespace uEyeWrapper
         }
     }
 
-    template <colorMode T>
-    void uEyeHandle<T>::_cleanup_memory()
+    template <imageColorMode M, imageBitDepth D>
+    void uEyeHandle<M, D>::_setup_capture_to_memory()
     {
+        // set color mode
+        UEYE_API_CALL(is_SetColorMode, {handle, _uEye_color_mode});
+        // // fails to execut when forwarding to API method using std::apply from wrapper
+        // INT nret = is_SetColorMode(handle, _uEye_color_mode);
+        // if(nret != IS_SUCCESS)
+        // {
+        //     throw std::runtime_error("set color mode failed");
+        // }
+
+        // allocate and activate memory
+        _memory_manager.initialize();
+
+        // set capture to memory
+        UEYE_API_CALL(is_SetDisplayMode, {handle, IS_SET_DM_DIB});
     }
 
-    // instantiate templates
-    template class uEyeHandle<colorMode::IMAGE_MONO_8_INT>;
-    template class uEyeHandle<colorMode::IMAGE_MONO_32_F>;
-    template class uEyeHandle<colorMode::IMAGE_BGR_8_INT>;
-    template class uEyeHandle<colorMode::IMAGE_BGR_32_F>;
-
-    // // acquisition handle
-    // uEyeImageAcquisitionHandle::uEyeImageAcquisitionHandle(HIDS handle, std::function<void(T)> imgCallback, std::function<void(int, std::string)> errorInfoCallback)
+    // will be handled by destruction of memory manager
+    // template <imageColorMode M, imageBitDepth D>
+    // void uEyeHandle<M, D>::_cleanup_memory()
     // {
-
+    //     // all buffer/memory chunks have to be unlocked by now; they should as all threads should have been waited on
     // }
 
-    // void uEyeImageAcquisitionHandle::startVideo(int FPS)
-    // {
+    // explicitly instantiate templates
+    template class uEyeHandle<uEye_MONO_8>;
+    template class uEyeHandle<uEye_RGB_8>;
+    template class uEyeHandle<uEye_MONO_16>;
+    template class uEyeHandle<uEye_RGB_16>;
 
-    // }
+    template uEyeCaptureHandle<uEyeHandle<uEye_MONO_8>, captureType::LIVE> uEyeHandle<uEye_MONO_8>::getCaptureHandle<captureType::LIVE>(typename uEyeCaptureHandle<uEyeHandle<uEye_MONO_8>, captureType::LIVE>::imageCallbackT);
+    template uEyeCaptureHandle<uEyeHandle<uEye_RGB_8>, captureType::LIVE> uEyeHandle<uEye_RGB_8>::getCaptureHandle<captureType::LIVE>(typename uEyeCaptureHandle<uEyeHandle<uEye_RGB_8>, captureType::LIVE>::imageCallbackT);
+    template uEyeCaptureHandle<uEyeHandle<uEye_MONO_16>, captureType::LIVE> uEyeHandle<uEye_MONO_16>::getCaptureHandle<captureType::LIVE>(typename uEyeCaptureHandle<uEyeHandle<uEye_MONO_16>, captureType::LIVE>::imageCallbackT);
+    template uEyeCaptureHandle<uEyeHandle<uEye_RGB_16>, captureType::LIVE> uEyeHandle<uEye_RGB_16>::getCaptureHandle<captureType::LIVE>(typename uEyeCaptureHandle<uEyeHandle<uEye_RGB_16>, captureType::LIVE>::imageCallbackT);
+    template uEyeCaptureHandle<uEyeHandle<uEye_MONO_8>, captureType::TRIGGER> uEyeHandle<uEye_MONO_8>::getCaptureHandle<captureType::TRIGGER>(typename uEyeCaptureHandle<uEyeHandle<uEye_MONO_8>, captureType::TRIGGER>::imageCallbackT);
+    template uEyeCaptureHandle<uEyeHandle<uEye_RGB_8>, captureType::TRIGGER> uEyeHandle<uEye_RGB_8>::getCaptureHandle<captureType::TRIGGER>(typename uEyeCaptureHandle<uEyeHandle<uEye_RGB_8>, captureType::TRIGGER>::imageCallbackT);
+    template uEyeCaptureHandle<uEyeHandle<uEye_MONO_16>, captureType::TRIGGER> uEyeHandle<uEye_MONO_16>::getCaptureHandle<captureType::TRIGGER>(typename uEyeCaptureHandle<uEyeHandle<uEye_MONO_16>, captureType::TRIGGER>::imageCallbackT);
+    template uEyeCaptureHandle<uEyeHandle<uEye_RGB_16>, captureType::TRIGGER> uEyeHandle<uEye_RGB_16>::getCaptureHandle<captureType::TRIGGER>(typename uEyeCaptureHandle<uEyeHandle<uEye_RGB_16>, captureType::TRIGGER>::imageCallbackT);
 
-    // void uEyeImageAcquisitionHandle::stopVideo()
-    // {
+    // call api methods, log info, throw on error and perform cleanup
+    // if message string is zero length, the API will be queried for last error string
+    template <typename H>
+    UEYE_API_CALL_MEMBER_DEF(imageMemoryManager<H>)
+    {
+        auto _msg = msg;
+        const std::string common_prefix = fmt::format(
+            "[{}@{}] memory manager {{camera {} ({} [#{}])}}",
+            caller_name,
+            caller_line,
+            _consumer_handle.camera.deviceId,
+            _consumer_handle.camera.modelName,
+            _consumer_handle.camera.serialNo);
 
-    // }
+        int nret = std::apply(f, f_args);
+        if (nret != IS_SUCCESS)
+        {
+            // query API for error message if user supplied message is empty and return code is IS_NO_SUCCESS
+            if (_msg.length() == 0 && nret == IS_NO_SUCCESS)
+            {
+                PLOG_DEBUG << fmt::format("{}: querying API for error message", common_prefix);
+                auto err_info = _consumer_handle._get_last_error_msg();
+                _msg = std::get<1>(err_info);
+            }
 
-    // void uEyeImageAcquisitionHandle::trigger()
-    // {
+            // build common message
+            const std::string common_msg = fmt::format(
+                "{}; {}() returned with code {}",
+                _msg.length() == 0 ? "<empty>" : _msg,
+                f_name,
+                nret);
 
-    // }
+            // log the error as warning from wrapper; error handling shall be done by user
+            PLOG_WARNING << fmt::format("{}: {}", common_prefix, common_msg);
 
-    // void uEyeHandle::setExtTrigger();
+            // if a cleanup is required and a handler function is provided, execute it
+            if (cleanup_handler)
+            {
+                PLOG_WARNING << fmt::format("{}: calling provided cleanup handler after failed call to {}()", common_prefix, f_name);
+                cleanup_handler();
+            }
+
+            // throw error
+            throw std::runtime_error(common_msg);
+        }
+
+        // log API method name and return code for debugging purposes (nret will allways be IS_SUCCESS(0) here)
+        PLOG_DEBUG << fmt::format("{}: {}() returned with code {}", common_prefix, f_name, nret);
+    }
+
+    template <typename H>
+    imageMemoryManager<H>::imageMemoryManager(const H &consumer_handle) : _consumer_handle(consumer_handle) {}
+
+    template <typename H>
+    void imageMemoryManager<H>::initialize()
+    {
+        // allocate memory chunks equal to concurrency value
+        auto [width, height] = _consumer_handle._resolution;
+        auto bits_per_pixel = _consumer_handle._channels * _consumer_handle._bit_depth;
+
+        PLOG_INFO << fmt::format(
+            "memory manager {{camera {} ({} [#{}])}} allocating {} image buffers for {}x{}px@{}bit",
+            _consumer_handle.camera.deviceId,
+            _consumer_handle.camera.modelName,
+            _consumer_handle.camera.serialNo,
+            _consumer_handle._concurrency,
+            width,
+            height,
+            bits_per_pixel);
+
+        for (auto _ : times(_consumer_handle._concurrency))
+        {
+            INT memID = 0;
+            char *memPtr = nullptr;
+
+            try
+            {
+                UEYE_API_CALL(is_AllocImageMem, {_consumer_handle.handle, (INT)width, (INT)height, (INT)bits_per_pixel, &memPtr, &memID});
+                PLOG_INFO << fmt::format(
+                    "memory manager {{camera {} ({} [#{}])}} allocated image buffer {}[@{}]",
+                    _consumer_handle.camera.deviceId,
+                    _consumer_handle.camera.modelName,
+                    _consumer_handle.camera.serialNo,
+                    (int)memID,
+                    fmt::ptr(memPtr));
+
+                UEYE_API_CALL(is_AddToSequence, {_consumer_handle.handle, memPtr, memID});
+                PLOG_INFO << fmt::format(
+                    "memory manager {{camera {} ({} [#{}])}} activated image buffer {}[@{}]",
+                    _consumer_handle.camera.deviceId,
+                    _consumer_handle.camera.modelName,
+                    _consumer_handle.camera.serialNo,
+                    (int)memID,
+                    fmt::ptr(memPtr));
+            }
+            catch (...)
+            {
+                PLOG_WARNING << fmt::format(
+                    "memory manager {{camera {} ({} [#{}])}} failed to allocate and activate last image buffer!",
+                    _consumer_handle.camera.deviceId,
+                    _consumer_handle.camera.modelName,
+                    _consumer_handle.camera.serialNo);
+
+                // remove
+                if (memPtr)
+                {
+                    UEYE_API_CALL(is_FreeImageMem, {_consumer_handle.handle, memPtr, memID});
+                }
+            }
+
+            // store buffer in memory map for deactivation and deallocation
+            (*this)[memPtr] = memID;
+        }
+
+        PLOG_INFO << fmt::format(
+            "memory manager {{camera {} ({} [#{}])}} allocated {} image buffers",
+            _consumer_handle.camera.deviceId,
+            _consumer_handle.camera.modelName,
+            _consumer_handle.camera.serialNo,
+            size());
+
+        if (!size())
+        {
+            PLOG_ERROR << fmt::format(
+                "memory manager {{camera {} ({} [#{}])}} failed to allocate image buffers",
+                _consumer_handle.camera.deviceId,
+                _consumer_handle.camera.modelName,
+                _consumer_handle.camera.serialNo);
+
+            throw std::runtime_error("failed to allocate image buffers");
+        }
+    }
+
+    template <typename H>
+    void imageMemoryManager<H>::cleanup()
+    {
+        if (size())
+        {
+            PLOG_INFO << fmt::format(
+                "memory manager {{camera {} ({} [#{}])}} will deactivate and deallocate {} image buffers",
+                _consumer_handle.camera.deviceId,
+                _consumer_handle.camera.modelName,
+                _consumer_handle.camera.serialNo,
+                size());
+
+            try
+            {
+                UEYE_API_CALL(is_ClearSequence, {_consumer_handle.handle});
+            }
+            catch (...)
+            {
+            }
+
+            // deallocate memory from driver
+            for (auto it = this->begin(); it != this->end();)
+            {
+                auto [memPtr, memID] = *it;
+                try
+                {
+                    UEYE_API_CALL(is_FreeImageMem, {_consumer_handle.handle, memPtr, memID});
+
+                    PLOG_INFO << fmt::format(
+                        "memory manager {{camera {} ({} [#{}])}} deallocated image buffer {}[@{}]",
+                        _consumer_handle.camera.deviceId,
+                        _consumer_handle.camera.modelName,
+                        _consumer_handle.camera.serialNo,
+                        (int)memID,
+                        fmt::ptr(memPtr));
+                }
+                catch (...)
+                {
+                    PLOG_WARNING << fmt::format(
+                        "memory manager {{camera {} ({} [#{}])}} failed to deallocate image buffer {}[@{}]",
+                        _consumer_handle.camera.deviceId,
+                        _consumer_handle.camera.modelName,
+                        _consumer_handle.camera.serialNo,
+                        (int)memID,
+                        fmt::ptr(memPtr));
+                }
+
+                // remove freed from managed memories
+                it = erase(it);
+            }
+        }
+    }
+
+    template <typename H>
+    INT imageMemoryManager<H>::getID(char *bufferAddress) const
+    {
+        return at(bufferAddress);
+    }
+
+    template <typename H>
+    imageMemoryManager<H>::~imageMemoryManager()
+    {
+        cleanup();
+    }
+
+    // explicitly instantiate templates
+    template class imageMemoryManager<uEyeHandle<uEye_MONO_8>>;
+    template class imageMemoryManager<uEyeHandle<uEye_RGB_8>>;
+    template class imageMemoryManager<uEyeHandle<uEye_MONO_16>>;
+    template class imageMemoryManager<uEyeHandle<uEye_RGB_16>>;
+
 }

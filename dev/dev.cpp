@@ -17,23 +17,32 @@ int main(int argc, char const *argv[])
 
         if (cameras.size())
         {
-            auto camera = uEyeWrapper::openCamera<uEye_MONO_8>(cameras.front(), [](int i, std::string msg, std::chrono::time_point<std::chrono::system_clock> timestamp) { /*noop*/ return; });
-            
-            camera.setFPS(1);
+            auto camera = uEyeWrapper::openCamera<uEye_MONO_16>(cameras.front(), [](int i, std::string msg, std::chrono::time_point<std::chrono::system_clock> timestamp) { /*noop*/ return; });
             camera.setWhiteBalance(uEyeWrapper::whiteBalance::halogen);
 
+            { // settle auto parameters
+                camera.setFPS(10);
+                auto capture = camera.getCaptureHandle<uEyeWrapper::captureType::LIVE>(
+                    [](auto...) { /* noop */
+                    });
+                std::this_thread::sleep_for(2s);
+            }
 
-            auto capture = camera.getCaptureHandle<uEyeWrapper::captureType::LIVE>(
-                [](auto image, auto timestamp, auto seq, auto id)
-                {
-                    auto dynImg = sln::to_dyn_image_view(image);
-                    sln::write_image(
-                        dynImg,
-                        sln::ImageFormat::PNG,
-                        sln::FileWriter(fmt::format("./dev_test_{}.png", seq)));
-                });
+            { // trigger manually
+                auto capture = camera.getCaptureHandle<uEyeWrapper::captureType::TRIGGER>(
+                    [](auto image, auto timestamp, auto seq, auto id)
+                    {
+                        auto dynImg = sln::to_dyn_image_view(image);
+                        sln::write_image(
+                            dynImg,
+                            sln::ImageFormat::PNG,
+                            sln::FileWriter(fmt::format("./dev_test_{}.png", seq)));
+                    });
 
-            std::this_thread::sleep_for(10s);
+                capture.trigger(true);
+                std::this_thread::sleep_for(1s);
+                capture.trigger(true);
+            }
         }
 
         return 0;

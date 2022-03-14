@@ -40,7 +40,7 @@ namespace uEyeWrapper
 
         // disable for captureType::LIVE
         template <typename enable_SFINAE = void>
-        auto trigger() -> std::enable_if_t<C == captureType::TRIGGER, enable_SFINAE>;
+        auto trigger(bool = false) -> std::enable_if_t<C == captureType::TRIGGER, enable_SFINAE>;
         // void trigger();
 
     private:

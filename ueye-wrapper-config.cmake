@@ -7,32 +7,28 @@
 
 
 #
-# ueye-wrapper-config.cmake	-	package configuration file for iDS uEye
+# uEye-wrapper-config.cmake	-	package configuration file for iDS uEye
 #								SDK C++ wrapper
 #
 #
 # exports:
-# 		ueye-wrapper -	target to link against; including all necessary
+# 		uEye-wrapper -	target to link against; including all necessary
 #						include directories
 #
-# sets:
-# 		ueye-wrapper_INCLUDE_DIR -	the directory containing:
-#									* ueye_wrapper.h
-#									* ip_helpers.h
-#
 
 
+# TODO: installable library
 
 IF(NOT TARGET ueye-wrapper)
 	
 	enable_language(CXX)
-	find_package( UEYE-SDK REQUIRED QUIET )
-	find_package( Threads REQUIRED QUIET )
-	find_package( OpenCV REQUIRED QUIET )
-
-	include("${CMAKE_CURRENT_LIST_DIR}/ueye-wrapperTargets.cmake")
+	find_package( uEye-SDK 4.94 REQUIRED )
+	find_package( Threads REQUIRED )
+	find_package( indicators REQUIRED )
+	find_package( fmt REQUIRED )
+	find_package( selene REQUIRED )
 	
-	target_include_directories( ueye-wrapper INTERFACE ${OpenCV_INCLUDE_DIRS} )
-	get_target_property(ueye-wrapper_INCLUDE_DIR ueye-wrapper INTERFACE_INCLUDE_DIRECTORIES)
+	include("${CMAKE_CURRENT_LIST_DIR}/uEye-wrapperTargets.cmake")
 
+	# target_include_directories( uEye-wrapper INTERFACE ${OpenCV_INCLUDE_DIRS} )
 ENDIF()

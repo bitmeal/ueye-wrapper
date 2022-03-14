@@ -82,7 +82,7 @@ namespace uEyeWrapper
     template <typename H, captureType C>
     template <typename enable_SFINAE>
     typename std::enable_if_t<C == captureType::TRIGGER, enable_SFINAE>
-    uEyeCaptureHandle<H, C>::trigger()
+    uEyeCaptureHandle<H, C>::trigger(bool wait)
     // void uEyeCaptureHandle<H, C>::trigger()
     {
         /////////////////////////////////////////////////////////////
@@ -93,7 +93,7 @@ namespace uEyeWrapper
         /////////////////////////////////////////////////////////////
         // impl
 
-        // TODO: implement triggering
+        UEYE_API_CALL(is_FreezeVideo, {_camera_handle.handle, wait ? IS_WAIT : IS_DONT_WAIT});
     }
 
     template <typename H, captureType C>
@@ -335,4 +335,9 @@ namespace uEyeWrapper
     template class uEyeCaptureHandle<uEyeHandle<uEye_RGB_8>, captureType::TRIGGER>;
     template class uEyeCaptureHandle<uEyeHandle<uEye_MONO_16>, captureType::TRIGGER>;
     template class uEyeCaptureHandle<uEyeHandle<uEye_RGB_16>, captureType::TRIGGER>;
+
+    template void uEyeCaptureHandle<uEyeHandle<uEye_MONO_8>, captureType::TRIGGER>::trigger<void>(bool);
+    template void uEyeCaptureHandle<uEyeHandle<uEye_RGB_8>, captureType::TRIGGER>::trigger<void>(bool);
+    template void uEyeCaptureHandle<uEyeHandle<uEye_MONO_16>, captureType::TRIGGER>::trigger<void>(bool);
+    template void uEyeCaptureHandle<uEyeHandle<uEye_RGB_16>, captureType::TRIGGER>::trigger<void>(bool);
 }

@@ -201,7 +201,7 @@ namespace uEyeWrapper
                                     {sln::PixelLength(std::get<0>(_camera_handle._resolution)),
                                      sln::PixelLength(std::get<1>(_camera_handle._resolution))});
 
-                                if (_camera_handle._bit_depth == 16) // is actually 12bit
+                                if (_camera_handle._uEye_color_mode == IS_CM_RGB12_UNPACKED) // RGB 16bit is actually 12bit
                                 {
                                     PLOG_DEBUG << fmt::format("capture handle {{camera {} ({} [#{}])}} image #{}({}) correcting 12bit <--> 16bit value scaling", // timestamp will be formated without milliseconds by default
                                                               _camera_handle.camera.deviceId,
@@ -213,20 +213,18 @@ namespace uEyeWrapper
                                     sln::for_each_pixel(imgView,
                                                         [](auto &px)
                                                         {
-                                                            constexpr double scaler = 65535 / 4096; //(std::pow(2, 16) - 1) / (std::pow(2, 12) - 1);
+                                                            constexpr double scaler = 65536 / 4096; //(std::pow(2, 16) - 1) / (std::pow(2, 12) - 1);
                                                             px *= scaler;
                                                         });
                                 }
 
                                 // dispatch callback with a selene image view
                                 imageCallback(
-                                    imgView.constant_view(),
+                                    // imgView.constant_view(),
+                                    imgView.view(),
                                     timestamp,
                                     imgInfo.u64TimestampDevice,
                                     imgInfo.u64FrameNumber);
-
-                                // unlock buffer
-                                UEYE_API_CALL(is_UnlockSeqBuf, {_camera_handle.handle, IS_IGNORE_PARAMETER, imgMemPtr});
                             }
                             catch (const std::exception &e)
                             {
@@ -238,6 +236,8 @@ namespace uEyeWrapper
                                                           imgInfo.u64FrameNumber,
                                                           e.what());
                             }
+                            // unlock buffer
+                            UEYE_API_CALL(is_UnlockSeqBuf, {_camera_handle.handle, IS_IGNORE_PARAMETER, imgMemPtr});
                         };
 
                         // dispatch callback to threadpool

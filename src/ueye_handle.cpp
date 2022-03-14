@@ -3,9 +3,9 @@
 
 #include <type_traits>
 #include <math.h>
-using namespace std::chrono_literals;
-
 #include <deque>
+#include <algorithm>
+using namespace std::chrono_literals;
 
 #include <stdio.h>
 
@@ -159,8 +159,22 @@ namespace uEyeWrapper
                                                                                                                                                              : (D == imageBitDepth::i8 ? IS_CM_RGB8_PACKED : IS_CM_RGB12_UNPACKED) // RGB
                                                                                                                                    ),
                                                                                                                   _concurrency(uEyeWrapper::concurrency),
-                                                                                                                  _memory_manager(*this)
+                                                                                                                  _memory_manager(*this),
+                                                                                                                  _events_init({{IS_SET_EVENT_FRAME, FALSE, FALSE},
+                                                                                                                                // start capture status event with signal flag and force initial handler execution
+                                                                                                                                {IS_SET_EVENT_CAPTURE_STATUS, FALSE, TRUE},
+                                                                                                                                // terminate thread event will not reset and will be available continuously after signaling
+                                                                                                                                {IS_SET_EVENT_TERMINATE_HANDLE_THREADS, TRUE, FALSE},
+                                                                                                                                {IS_SET_EVENT_TERMINATE_CAPTURE_THREADS, TRUE, FALSE}})
     {
+        // setup data
+        std::transform(_events_init.begin(), _events_init.end(),
+                       std::back_inserter(_events),
+                       [](IS_INIT_EVENT &e)
+                       {
+                           return e.nEvent;
+                       });
+
         // initialize object
         _camera = camera; // param
         _camera.canOpen = false;
@@ -831,28 +845,32 @@ namespace uEyeWrapper
     {
         // TODO: use stl containers, make INIT_EVENT structure a member, build event list from member by mapping function
         // init events
-        IS_INIT_EVENT init_events[] = {
-            {IS_SET_EVENT_FRAME, FALSE, FALSE},
-            // start capture status event with signal flag and force initial handler execution
-            {IS_SET_EVENT_CAPTURE_STATUS, FALSE, TRUE},
-            // terminate thread event will not reset and will be available continuously after signaling
-            {IS_SET_EVENT_TERMINATE_HANDLE_THREADS, TRUE, FALSE},
-            {IS_SET_EVENT_TERMINATE_CAPTURE_THREADS, TRUE, FALSE}};
+        // IS_INIT_EVENT init_events[] = {
+        //     {IS_SET_EVENT_FRAME, FALSE, FALSE},
+        //     // start capture status event with signal flag and force initial handler execution
+        //     {IS_SET_EVENT_CAPTURE_STATUS, FALSE, TRUE},
+        //     // terminate thread event will not reset and will be available continuously after signaling
+        //     {IS_SET_EVENT_TERMINATE_HANDLE_THREADS, TRUE, FALSE},
+        //     {IS_SET_EVENT_TERMINATE_CAPTURE_THREADS, TRUE, FALSE}};
+        // UEYE_API_CALL(is_Event, {handle, IS_EVENT_CMD_INIT, init_events, (UINT)sizeof(init_events)});
 
-        UEYE_API_CALL(is_Event, {handle, IS_EVENT_CMD_INIT, init_events, (UINT)sizeof(init_events)});
+        UEYE_API_CALL(is_Event, {handle, IS_EVENT_CMD_INIT, _events_init.data(), (UINT)(sizeof(typename decltype(_events_init)::value_type) * _events_init.size())});
 
         // enable event messages
-        UINT events[] = {IS_SET_EVENT_FRAME, IS_SET_EVENT_CAPTURE_STATUS, IS_SET_EVENT_TERMINATE_HANDLE_THREADS, IS_SET_EVENT_TERMINATE_CAPTURE_THREADS};
-        is_Event(handle, IS_EVENT_CMD_ENABLE, events, sizeof(events));
+        // UINT events[] = {IS_SET_EVENT_FRAME, IS_SET_EVENT_CAPTURE_STATUS, IS_SET_EVENT_TERMINATE_HANDLE_THREADS, IS_SET_EVENT_TERMINATE_CAPTURE_THREADS};
+        // is_Event(handle, IS_EVENT_CMD_ENABLE, events, sizeof(events));
+        UEYE_API_CALL(is_Event, {handle, IS_EVENT_CMD_ENABLE, _events.data(), (UINT)(sizeof(typename decltype(_events)::value_type) * _events.size())});
     }
 
     template <imageColorMode M, imageBitDepth D>
     void uEyeHandle<M, D>::_cleanup_events()
     {
-        // TODO: as in _init_events()
-        UINT events[] = {IS_SET_EVENT_FRAME, IS_SET_EVENT_CAPTURE_STATUS, IS_SET_EVENT_TERMINATE_HANDLE_THREADS, IS_SET_EVENT_TERMINATE_CAPTURE_THREADS};
-        is_Event(handle, IS_EVENT_CMD_DISABLE, events, sizeof(events));
-        is_Event(handle, IS_EVENT_CMD_EXIT, events, sizeof(events));
+        // // TODO: as in _init_events()
+        // UINT events[] = {IS_SET_EVENT_FRAME, IS_SET_EVENT_CAPTURE_STATUS, IS_SET_EVENT_TERMINATE_HANDLE_THREADS, IS_SET_EVENT_TERMINATE_CAPTURE_THREADS};
+        // is_Event(handle, IS_EVENT_CMD_DISABLE, events, sizeof(events));
+        // is_Event(handle, IS_EVENT_CMD_EXIT, events, sizeof(events));
+        is_Event(handle, IS_EVENT_CMD_DISABLE, _events.data(), (UINT)(sizeof(typename decltype(_events)::value_type) * _events.size()));
+        is_Event(handle, IS_EVENT_CMD_EXIT, _events.data(), (UINT)(sizeof(typename decltype(_events)::value_type) * _events.size()));
     }
 
     template <imageColorMode M, imageBitDepth D>

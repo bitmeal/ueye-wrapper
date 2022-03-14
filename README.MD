@@ -1,7 +1,7 @@
 # uEye C++ wrapper
 A simple C++ wrapper for image capture with asynchronous image handling around the iDS uEye *C*-Interface. Full control over the camera functions is traded for automatic setup and sane *auto-mode* configuration. Channel count and bit depth are strongly typed and images are handed over to the consuming application as *selene* `sln::ConstantImageView` without copying.
 
-## quickstart
+## quickstart example
 * query for available cameras
 * select camera by e.g. ID or serial number
 * get a handle on the camera (open and configure it)
@@ -42,5 +42,7 @@ int main(int argc, char const *argv[])
     );
 
     std::this_thread::sleep_for(10s);
+
+    return 0;
 }
 ```

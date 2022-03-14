@@ -32,7 +32,8 @@ namespace uEyeWrapper
         typedef sln::MutableImageView <typename H::typedPixelT> typedImageViewT;
         typedef sln::ConstantImageView<typename H::typedPixelT> constTypedImageViewT;
         // image, timestamp, monotonic sequence counter, id
-        typedef std::function<void(constTypedImageViewT, std::chrono::time_point<std::chrono::system_clock>, size_t, size_t)> imageCallbackT;
+        // typedef std::function<void(constTypedImageViewT, std::chrono::time_point<std::chrono::system_clock>, size_t, size_t)> imageCallbackT;
+        typedef std::function<void(typedImageViewT, std::chrono::time_point<std::chrono::system_clock>, size_t, size_t)> imageCallbackT;
 
         uEyeCaptureHandle() = delete;
         uEyeCaptureHandle(const H &, imageCallbackT);

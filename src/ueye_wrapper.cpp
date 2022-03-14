@@ -14,7 +14,7 @@
 #include <plog/Init.h>
 #include <plog/Formatters/TxtFormatter.h>
 #include <plog/Appenders/ColorConsoleAppender.h>
-#define UEYE_WRAPPER_LOG_LEVEL_DEFAULT debug
+#define UEYE_WRAPPER_LOG_LEVEL_DEFAULT warning
 
 #include "wrapper_helpers.h"
 #include "ueye_wrapper.h"
@@ -22,10 +22,16 @@
 
 namespace uEyeWrapper
 {
+    // "global" concurrency configuration
+    size_t concurrency = 3;
+
     static plog::ColorConsoleAppender<plog::TxtFormatter> plogCCA;
     static auto *logger = plog::get() == nullptr ? &(plog::init(plog::UEYE_WRAPPER_LOG_LEVEL_DEFAULT, &plogCCA)) : plog::get();
 
-    size_t concurrency = 3;
+    plog::Logger<0>& getLogger()
+    {
+        return *(plog::get());
+    }
 
     std::tuple<connectionType, std::string, bool> getCameraConnectionInfo(DWORD deviceId)
     {
@@ -70,7 +76,7 @@ namespace uEyeWrapper
                 UEYE_ETH_AUTOCFG_IP_SETUP ipCfg;
                 std::memset(&ipCfg, 0, sizeof(UEYE_ETH_AUTOCFG_IP_SETUP));
 
-                UEYE_API_CALL(is_IpConfig, {(INT)deviceId, {0, 0, 0, 0, 0, 0}, IPCONFIG_CMD_GET_AUTOCONFIG_IP_BYDEVICE, &ipCfg, sizeof(UEYE_ETH_AUTOCFG_IP_SETUP) }, "fetching camera IP config failed, even though it should be supported");
+                UEYE_API_CALL(is_IpConfig, {(INT)deviceId, {0, 0, 0, 0, 0, 0}, IPCONFIG_CMD_GET_AUTOCONFIG_IP_BYDEVICE, &ipCfg, sizeof(UEYE_ETH_AUTOCFG_IP_SETUP)}, "fetching camera IP config failed, even though it should be supported");
 
                 std::string ipAddressRange =
                     ip_bytes_to_string(ip_u32_little_endian_to_bytes(ipCfg.ipAutoCfgIpRangeBegin.dwAddr)) + ":" +
@@ -103,7 +109,8 @@ namespace uEyeWrapper
         clPtr = (UEYE_CAMERA_LIST *)new BYTE[sizeof(DWORD) + numCams * sizeof(UEYE_CAMERA_INFO)];
         clPtr->dwCount = numCams;
 
-        UEYE_API_CALL(is_GetCameraList, {clPtr}, "failed to get list of cameras", [&](){ delete clPtr; });
+        UEYE_API_CALL(is_GetCameraList, {clPtr}, "failed to get list of cameras", [&]()
+                      { delete clPtr; });
 
         for (unsigned int i = 0; i < clPtr->dwCount; ++i)
         {
@@ -143,7 +150,7 @@ namespace uEyeWrapper
     }
 
     template <imageColorMode M, imageBitDepth D>
-    uEyeHandle<M,D> openCamera(const uEyeCameraInfo camera, std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)> errorCallback, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> uploadProgressHandler)
+    uEyeHandle<M, D> openCamera(const uEyeCameraInfo camera, std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)> errorCallback, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> uploadProgressHandler)
     {
         // PLOG_INFO << fmt::format(
         //     "opening camera {}: {} [#{}]",
@@ -151,7 +158,7 @@ namespace uEyeWrapper
         //     camera.modelName,
         //     camera.serialNo);
 
-        return uEyeHandle<M,D>(camera, errorCallback, uploadProgressHandler);
+        return uEyeHandle<M, D>(camera, errorCallback, uploadProgressHandler);
     }
     template uEyeHandle<uEye_MONO_8> openCamera<uEye_MONO_8>(const uEyeCameraInfo, std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)>, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)>);
     template uEyeHandle<uEye_RGB_8> openCamera<uEye_RGB_8>(const uEyeCameraInfo, std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)>, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)>);

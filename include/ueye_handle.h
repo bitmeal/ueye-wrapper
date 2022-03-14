@@ -20,6 +20,8 @@ namespace uEyeWrapper
 #include <thread>
 #include <map>
 
+#include <plog/Logger.h>
+
 #define CAMERA_STARTER_FIRMWARE_UPLOAD_RETRY_WAIT 10ms
 #define CAMERA_STARTER_FIRMWARE_UPLOAD_RETRIES 3
 #define CAMERA_CLOSE_RETRY_WAIT 10ms
@@ -32,6 +34,8 @@ static_assert(IS_SET_EVENT_TERMINATE_CAPTURE_THREADS <= IS_SET_EVENT_USER_DEFINE
 
 namespace uEyeWrapper
 {
+    plog::Logger<0>& getLogger();
+
     void uploadProgressHandlerBar(uEyeCameraInfo camera, std::chrono::milliseconds duration, progress_state &state);
 
     // allocates and deallocates image buffers
@@ -103,6 +107,9 @@ namespace uEyeWrapper
         const size_t _concurrency;
 
         imageMemoryManager<uEyeHandle<M, D>> _memory_manager;
+
+        std::vector<IS_INIT_EVENT> _events_init;
+        std::vector<UINT> _events;
 
         captureErrors _error_stats;
 

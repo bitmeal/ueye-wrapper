@@ -17,6 +17,7 @@ CMakeSettings.json
 *.png
 *.jpg
 *.bmp
+*.tif*
 
 # misc
 trash/

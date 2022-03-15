@@ -23,6 +23,7 @@ using namespace std::chrono_literals;
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <fmt/color.h>
+#include <fmt/chrono.h>
 
 #include <plog/Log.h>
 
@@ -80,11 +81,12 @@ namespace uEyeWrapper
         }
         else
         {
-            PLOG_DEBUG << fmt::format(
-                "camera {} ({} [#{}]) no tty on stdout; hiding firmware upload progress bar",
+            PLOG_WARNING << fmt::format(
+                "camera {} ({} [#{}]) requires a new starter firmware; upload time ~{}; upload in progress...",
                 camera.deviceId,
                 camera.modelName,
-                camera.serialNo);
+                camera.serialNo,
+                duration);
         }
     }
 

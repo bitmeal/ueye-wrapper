@@ -24,7 +24,7 @@ int main(int argc, char const *argv[])
 
         if (cameras.size())
         {
-            auto camera = uEyeWrapper::openCamera<uEye_RGB_16>(cameras.front(), [](int i, std::string msg, std::chrono::time_point<std::chrono::system_clock> timestamp) { /*noop*/ return; });
+            auto camera = uEyeWrapper::openCamera<uEye_RGB_16>(cameras.front());
             camera.setWhiteBalance(uEyeWrapper::whiteBalance::halogen);
 
             // { // settle auto parameters

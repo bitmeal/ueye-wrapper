@@ -1,6 +1,6 @@
 [submodule "ueye-cmake"]
-	path = ueye-cmake
+	path = external/ueye-cmake
 	url = https://github.com/bitmeal/ueye-cmake
 [submodule "vcpkg-cmake-integration"]
-	path = vcpkg-cmake-integration
+	path = external/vcpkg-cmake-integration
 	url = https://github.com/bitmeal/vcpkg-cmake-integration

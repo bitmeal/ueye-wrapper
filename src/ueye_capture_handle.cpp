@@ -66,7 +66,7 @@ namespace uEyeWrapper
     template <typename H, captureType C>
     uEyeCaptureHandle<H, C>::uEyeCaptureHandle(const H &camera_handle, imageCallbackT imageCallback) : _camera_handle(camera_handle),
                                                                                                        imageCallback(imageCallback),
-                                                                                                       _pool(camera_handle._concurrency)
+                                                                                                       _pool((unsigned int)camera_handle._concurrency)
     {
         _SPAWN_image_dispatcher();
 

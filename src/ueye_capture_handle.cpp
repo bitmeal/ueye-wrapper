@@ -129,7 +129,7 @@ namespace uEyeWrapper
                                       _camera_handle.camera.modelName,
                                       _camera_handle.camera.serialNo);
             UINT events[] = {IS_SET_EVENT_FRAME, IS_SET_EVENT_TERMINATE_CAPTURE_THREADS};
-            IS_WAIT_EVENTS wait_events = {events, sizeof(events) / sizeof(events[0]), FALSE, INFINITE, 0, 0};
+            IS_WAIT_EVENTS wait_events = {events, (UINT)(sizeof(events) / sizeof(events[0])), FALSE, (UINT)INFINITE, 0, 0};
 
             while (IS_SET_EVENT_TERMINATE_CAPTURE_THREADS != wait_events.nSignaled)
             {
@@ -192,7 +192,7 @@ namespace uEyeWrapper
                                                  millis.count());
 
                         // callback executor task
-                        auto caller = [=, this]()
+                        auto caller = [=]()
                         {
                             try
                             {

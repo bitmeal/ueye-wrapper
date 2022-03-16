@@ -17,7 +17,7 @@
 #include <windows.h>
 #else
 // typedef uint32_t DWORD;
-typedef unsigned long DWORD;
+// typedef unsigned long DWORD;
 #endif
 
 

@@ -6,6 +6,7 @@
 // #include <type_traits>
 
 #include <plog/Log.h>
+#include <fmt/core.h>
 
 #include <ueye.h>
 
@@ -37,9 +38,13 @@
 // as class member: template<typename T> UEYE_API_CALL_MEMBER_DEF(uEyeHandle<M,D>){ /* impl */ }
 #define UEYE_API_CALL_MEMBER_DEF(...)                         \
     template <typename FunctionRet, typename... FunctionArgs> \
-    void __VA_ARGS__## ::_api_wrapped(FunctionRet (*f)(FunctionArgs...), std::tuple<FunctionArgs...> f_args, const std::string msg, std::function<void()> cleanup_handler, const std::string f_name, const std::string caller_name, const int caller_line)
+    void __VA_ARGS__::_api_wrapped(FunctionRet (*f)(FunctionArgs...), std::tuple<FunctionArgs...> f_args, const std::string msg, std::function<void()> cleanup_handler, const std::string f_name, const std::string caller_name, const int caller_line)
 
-// default wrapper implementation
+//// default wrapper implementation
+// fwd decl
+template <typename FunctionRet, typename... FunctionArgs>
+void _api_wrapped(FunctionRet (*f)(FunctionArgs...), std::tuple<FunctionArgs...> f_args, const std::string msg, std::function<void()> cleanup_handler, const std::string f_name, const std::string caller_name, const int caller_line);
+// impl
 UEYE_API_CALL_PROTO()
 {
     int nret = std::apply(f, f_args);

@@ -96,7 +96,7 @@ namespace uEyeWrapper
     // call api methods, log info, throw on error and perform cleanup
     // if message string is zero length, the API will be queried for last error string
     template <imageColorMode M, imageBitDepth D>
-    UEYE_API_CALL_MEMBER_DEF(uEyeHandle<M, D>)
+    UEYE_API_CALL_MEMBER_DEF(uEyeHandle<M,D>)
     {
         auto _msg = msg;
         const std::string common_prefix = fmt::format(
@@ -889,7 +889,7 @@ namespace uEyeWrapper
         {
             PLOG_DEBUG << fmt::format("camera {} ({} [#{}]) capture status observer started", camera.deviceId, camera.modelName, camera.serialNo);
             UINT events[] = {IS_SET_EVENT_CAPTURE_STATUS, IS_SET_EVENT_TERMINATE_HANDLE_THREADS};
-            IS_WAIT_EVENTS wait_events = {events, sizeof(events) / sizeof(events[0]), FALSE, INFINITE, 0, 0};
+            IS_WAIT_EVENTS wait_events = {events, (UINT)(sizeof(events) / sizeof(events[0])), FALSE, (UINT)INFINITE, 0, 0};
 
             while (IS_SET_EVENT_TERMINATE_HANDLE_THREADS != wait_events.nSignaled)
             {
@@ -904,7 +904,7 @@ namespace uEyeWrapper
                         UEYE_API_CALL(is_CaptureStatus, {handle, IS_CAPTURE_STATUS_INFO_CMD_GET, (void *)&CaptureStatusInfo, (UINT)sizeof(CaptureStatusInfo)});
 
                         _error_stats.update(CaptureStatusInfo, std::chrono::system_clock::now(),
-                                            [&this](captureError err)
+                                            [this](captureError err)
                                             {
                                                 PLOG_WARNING << fmt::format(
                                                     "camera {} ({} [#{}]) {}({}): {}",

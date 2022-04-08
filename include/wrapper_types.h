@@ -106,8 +106,9 @@ namespace uEyeWrapper
 
     struct captureError
     {
-        captureError(std::string name, std::string info) : name(name), info(info){};
+        captureError(UEYE_CAPTURE_STATUS id, std::string name, std::string info) : id(id), name(name), info(info){};
 
+        UEYE_CAPTURE_STATUS id;
         std::string name;
         std::string info;
         std::vector<std::chrono::time_point<std::chrono::system_clock>> timestamps;
@@ -133,16 +134,16 @@ namespace uEyeWrapper
 
         const std::map<const UEYE_CAPTURE_STATUS, captureError &> errorMapper;
 
-        captureErrors() : API_NO_DEST_MEM("API_NO_DEST_MEM", "Not enough destination memory allocated or all destination buffers locked by the application"),
-                          API_CONVERSION_FAILED("API_CONVERSION_FAILED", "The current image could not be processed correctly (Internal error during internal processing of the image)"),
-                          API_IMAGE_LOCKED("API_IMAGE_LOCKED", "All destination buffers locked by the application"),
-                          DRV_OUT_OF_BUFFERS("DRV_OUT_OF_BUFFERS", "No free internal image memory is available to the driver"),
-                          DRV_DEVICE_NOT_READY("DRV_DEVICE_NOT_READY", "The camera is no longer available"),
-                          TRANSFER_FAILED("TRANSFER_FAILED", "Not enough free bandwidth for transferring the image"),
-                          DEV_MISSED_IMAGES("DEV_MISSED_IMAGES", "The camera's frame rate is too high or the bandwidth on the network is insufficient to transfer the image"),
-                          DEV_TIMEOUT("DEV_TIMEOUT", "The maximum allowable time for image capturing in the camera was exceeded"),
-                          DEV_FRAME_CAPTURE_FAILED("DEV_FRAME_CAPTURE_FAILED", "Not enough free bandwidth on the interface for transferring the image"),
-                          ETH_BUFFER_OVERRUN("ETH_BUFFER_OVERRUN", "The sensor transfers more data than the internal camera memory of the GigE uEye camera can accommodate (The selected data rate of the sensor is too high)"),
+        captureErrors() : API_NO_DEST_MEM(IS_CAP_STATUS_API_NO_DEST_MEM, "API_NO_DEST_MEM", "Not enough destination memory allocated or all destination buffers locked by the application"),
+                          API_CONVERSION_FAILED(IS_CAP_STATUS_API_CONVERSION_FAILED, "API_CONVERSION_FAILED", "The current image could not be processed correctly (Internal error during internal processing of the image)"),
+                          API_IMAGE_LOCKED(IS_CAP_STATUS_API_IMAGE_LOCKED, "API_IMAGE_LOCKED", "All destination buffers locked by the application"),
+                          DRV_OUT_OF_BUFFERS(IS_CAP_STATUS_DRV_OUT_OF_BUFFERS, "DRV_OUT_OF_BUFFERS", "No free internal image memory is available to the driver"),
+                          DRV_DEVICE_NOT_READY(IS_CAP_STATUS_DRV_DEVICE_NOT_READY, "DRV_DEVICE_NOT_READY", "The camera is no longer available"),
+                          TRANSFER_FAILED(IS_CAP_STATUS_TRANSFER_FAILED, "TRANSFER_FAILED", "Not enough free bandwidth for transferring the image"),
+                          DEV_MISSED_IMAGES(IS_CAP_STATUS_DEV_MISSED_IMAGES, "DEV_MISSED_IMAGES", "The camera's frame rate is too high or the bandwidth on the network is insufficient to transfer the image"),
+                          DEV_TIMEOUT(IS_CAP_STATUS_DEV_TIMEOUT, "DEV_TIMEOUT", "The maximum allowable time for image capturing in the camera was exceeded"),
+                          DEV_FRAME_CAPTURE_FAILED(IS_CAP_STATUS_DEV_FRAME_CAPTURE_FAILED, "DEV_FRAME_CAPTURE_FAILED", "Not enough free bandwidth on the interface for transferring the image"),
+                          ETH_BUFFER_OVERRUN(IS_CAP_STATUS_ETH_BUFFER_OVERRUN, "ETH_BUFFER_OVERRUN", "The sensor transfers more data than the internal camera memory of the GigE uEye camera can accommodate (The selected data rate of the sensor is too high)"),
                           USB_TRANSFER_FAILED(TRANSFER_FAILED),
                           ETH_MISSED_IMAGES(DEV_MISSED_IMAGES),
                           errorMapper({{IS_CAP_STATUS_API_NO_DEST_MEM, API_NO_DEST_MEM},

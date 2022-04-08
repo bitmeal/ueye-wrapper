@@ -70,13 +70,14 @@ namespace uEyeWrapper
                                             typename std::conditional_t<D == imageBitDepth::i8, sln::PixelY_8u, sln::PixelY_16u>,     // MONO
                                             typename std::conditional_t<D == imageBitDepth::i8, sln::PixelRGB_8u, sln::PixelRGB_16u>> // RGB
             typedPixelT;
-        typedef std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)> captureStatusCallbackT;
+        typedef std::function<void(const captureError&)> captureErrorCallbackT;
+        // typedef std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)> captureErrorCallbackT;
 
-        uEyeHandle(uEyeCameraInfo, captureStatusCallbackT = nullptr, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> = uploadProgressHandlerBar);
+        uEyeHandle(uEyeCameraInfo camera_info, captureErrorCallbackT capture_error_callback = nullptr, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> fw_upload_progress_handler = uploadProgressHandlerBar);
         ~uEyeHandle();
 
         template <captureType C>
-        uEyeCaptureHandle<uEyeHandle<M, D>, C> getCaptureHandle(typename uEyeCaptureHandle<uEyeHandle<M, D>, C>::imageCallbackT);
+        uEyeCaptureHandle<uEyeHandle<M, D>, C> getCaptureHandle(typename uEyeCaptureHandle<uEyeHandle<M, D>, C>::imageCallbackT image_callback);
 
         const uEyeCameraInfo &camera;
         // const double &FPS;
@@ -115,7 +116,7 @@ namespace uEyeWrapper
 
         std::thread _capture_status_observer_executor;
         void _SPAWN_capture_status_observer();
-        captureStatusCallbackT captureStatusCallback;
+        captureErrorCallbackT captureErrorCallback;
 
         void _open_camera(std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> = uploadProgressHandlerBar);
         void _populate_sensor_info();

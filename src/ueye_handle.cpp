@@ -146,13 +146,13 @@ namespace uEyeWrapper
     template <imageColorMode M, imageBitDepth D>
     uEyeHandle<M, D>::uEyeHandle(
         uEyeCameraInfo camera,
-        std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)> captureStatusCallback,
+        captureErrorCallbackT captureErrorCallback,
         std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> uploadProgressHandler) : /*FPS(_FPS), freerun_active(_freerun_active),*/
                                                                                                                   camera(_camera),
                                                                                                                   resolution(_resolution),
                                                                                                                   sensor(_sensor),
                                                                                                                   errorStats(_error_stats),
-                                                                                                                  captureStatusCallback(captureStatusCallback),
+                                                                                                                  captureErrorCallback(captureErrorCallback),
                                                                                                                   handle(0),
                                                                                                                   _channels((std::underlying_type_t<decltype(M)>)M),
                                                                                                                   _bit_depth((std::underlying_type_t<decltype(D)>)D),
@@ -912,8 +912,14 @@ namespace uEyeWrapper
                                                     camera.modelName,
                                                     camera.serialNo,
                                                     err.name,
-                                                    err.count(),
+                                                    err.id,
                                                     err.info);
+                                                
+                                                // call user supplied callback
+                                                if(captureErrorCallback)
+                                                {
+                                                    captureErrorCallback(err);
+                                                }
                                             });
                     }
                     catch (const std::exception &e)

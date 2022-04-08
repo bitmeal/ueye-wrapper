@@ -20,5 +20,5 @@ namespace uEyeWrapper
     cameraList getCameraList();
 
     template <imageColorMode M, imageBitDepth D>
-    uEyeHandle<M, D> openCamera(const uEyeCameraInfo, std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)> = nullptr, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> = uploadProgressHandlerBar);
+    uEyeHandle<M, D> openCamera(const uEyeCameraInfo camera_info, typename uEyeHandle<M,D>::captureErrorCallbackT capture_error_callback = nullptr, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> fw_upload_progress_handler = uploadProgressHandlerBar);
 }

@@ -150,7 +150,7 @@ namespace uEyeWrapper
     }
 
     template <imageColorMode M, imageBitDepth D>
-    uEyeHandle<M, D> openCamera(const uEyeCameraInfo camera, std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)> errorCallback, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> uploadProgressHandler)
+    uEyeHandle<M, D> openCamera(const uEyeCameraInfo camera, typename uEyeHandle<M,D>::captureErrorCallbackT captureErrorCallback, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)> uploadProgressHandler)
     {
         // PLOG_INFO << fmt::format(
         //     "opening camera {}: {} [#{}]",
@@ -158,11 +158,11 @@ namespace uEyeWrapper
         //     camera.modelName,
         //     camera.serialNo);
 
-        return uEyeHandle<M, D>(camera, errorCallback, uploadProgressHandler);
+        return uEyeHandle<M, D>(camera, captureErrorCallback, uploadProgressHandler);
     }
-    template uEyeHandle<uEye_MONO_8> openCamera<uEye_MONO_8>(const uEyeCameraInfo, std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)>, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)>);
-    template uEyeHandle<uEye_RGB_8> openCamera<uEye_RGB_8>(const uEyeCameraInfo, std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)>, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)>);
-    template uEyeHandle<uEye_MONO_16> openCamera<uEye_MONO_16>(const uEyeCameraInfo, std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)>, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)>);
-    template uEyeHandle<uEye_RGB_16> openCamera<uEye_RGB_16>(const uEyeCameraInfo, std::function<void(int, std::string, std::chrono::time_point<std::chrono::system_clock>)>, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)>);
+    template uEyeHandle<uEye_MONO_8> openCamera<uEye_MONO_8>(const uEyeCameraInfo, typename uEyeHandle<uEye_MONO_8>::captureErrorCallbackT, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)>);
+    template uEyeHandle<uEye_RGB_8> openCamera<uEye_RGB_8>(const uEyeCameraInfo, typename uEyeHandle<uEye_RGB_8>::captureErrorCallbackT, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)>);
+    template uEyeHandle<uEye_MONO_16> openCamera<uEye_MONO_16>(const uEyeCameraInfo, typename uEyeHandle<uEye_MONO_16>::captureErrorCallbackT, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)>);
+    template uEyeHandle<uEye_RGB_16> openCamera<uEye_RGB_16>(const uEyeCameraInfo, typename uEyeHandle<uEye_RGB_16>::captureErrorCallbackT, std::function<void(uEyeCameraInfo, std::chrono::milliseconds, progress_state &)>);
 
 }

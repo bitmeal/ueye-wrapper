@@ -60,16 +60,3 @@ add_library( uEye-wrapper src/ueye_wrapper.cpp src/ueye_handle.cpp src/ueye_capt
 	target_compile_definitions(uEye-SDK INTERFACE NOMINMAX)
 	set_target_properties(uEye-wrapper PROPERTIES C_STANDARD 17 CXX_STANDARD 17 C_VISIBILITY_PRESET hidden CXX_VISIBILITY_PRESET hidden)
 
-
-# prepare cross plattform install paths
-	IF(WIN32) # is Windows
-		SET(CMAKE_INSTALL_INCLUDEDIR "${CMAKE_INSTALL_PREFIX}/include")
-		SET(CMAKE_INSTALL_CMAKEDIR "${CMAKE_INSTALL_PREFIX}/CMake")
-		SET(CMAKE_INSTALL_LIBDIR "${CMAKE_INSTALL_PREFIX}/lib")
-		SET(CMAKE_INSTALL_BINDIR "${CMAKE_INSTALL_PREFIX}/bin")
-		SET(CMAKE_INSTALL_DOCDIR "${CMAKE_INSTALL_PREFIX}")
-	ELSE() # is *NIX like
-		include(GNUInstallDirs)
-		SET(CMAKE_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
-	ENDIF() # end plattform specific code
-

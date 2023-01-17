@@ -313,7 +313,20 @@ namespace uEyeWrapper
     void uEyeCaptureHandle<H, C>::_stop_capture()
     {
         // TODO: error handling
-        UEYE_API_CALL(is_ForceTrigger, {_camera_handle.handle}); // stop all running capturing operations
+        try
+        {
+            UEYE_API_CALL(is_ForceTrigger, {_camera_handle.handle}); // stop all running capturing operations
+        }
+        catch(const std::runtime_error& e)
+        {
+            std::cerr << e.what() << '\n';
+            PLOG_WARNING << fmt::format("capture handle {{camera {} ({} [#{}])}} ignoring is_ForceTrigger error on camera capture stop; error msg: {}",
+                                        _camera_handle.camera.deviceId,
+                                        _camera_handle.camera.modelName,
+                                        _camera_handle.camera.serialNo,
+                                        e.what());
+        }
+        
         UEYE_API_CALL(is_SetExternalTrigger, {_camera_handle.handle, IS_SET_TRIGGER_OFF});
         UEYE_API_CALL(is_SetExternalTrigger, {_camera_handle.handle, IS_GET_TRIGGER_STATUS}); // from @anqixu/ueye_cam: documentation seems to suggest that this is needed to disable external trigger mode (to go into free-run mode)
         UEYE_API_CALL(is_StopLiveVideo, {_camera_handle.handle, IS_WAIT});

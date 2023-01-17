@@ -15,7 +15,7 @@ namespace uEyeWrapper
 // #include <selene/img/typed/ImageViewAliases.hpp>
 #include <selene/img_ops/Algorithms.hpp>
 
-#include <thread_pool.hpp>
+#include <BS_thread_pool.hpp>
 
 #include <type_traits>
 
@@ -53,7 +53,7 @@ namespace uEyeWrapper
         void _SPAWN_image_dispatcher();
         void _stop_threads();
 
-        thread_pool _pool;
+        BS::thread_pool _pool;
 
         // stop live and triggered
         void _stop_capture();

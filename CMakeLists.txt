@@ -9,7 +9,7 @@
 cmake_minimum_required(VERSION 3.12.0)
 SET(CMAKE_CXX_STANDARD 17)
 
-project(uEye-wrapper VERSION 0.1.0)
+project(uEye-wrapper VERSION 0.1.1)
 
 
 # find/setup dependencies
@@ -36,7 +36,7 @@ project(uEye-wrapper VERSION 0.1.0)
 	endif()
 
 	## find thread-pool
-	find_path(BSHOSHANY_THREAD_POOL_INCLUDE_DIRS "thread_pool.hpp" REQUIRED)
+	find_path(BSHOSHANY_THREAD_POOL_INCLUDE_DIRS "BS_thread_pool.hpp" REQUIRED)
 	if(NOT BSHOSHANY_THREAD_POOL_INCLUDE_DIRS) # ever being dispatched after "REQUIRED"?
 		message(SEND_ERROR "could not find BSHOSHANY_THREAD_POOL_INCLUDE_DIRS; using vcpkg as per thread-pool documentation is recommended; bshoshany/thread-pool is required")
 	endif()
